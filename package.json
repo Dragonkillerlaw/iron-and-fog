@@ -1,0 +1,13 @@
+{
+  "name": "iron-and-fog",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Eastern Front hex tactics game",
+  "scripts": {
+    "start": "node serve.cjs",
+    "test": "node test-barbarossa-tactics.cjs && node test-iron-fog.cjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
