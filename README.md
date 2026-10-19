@@ -2,6 +2,8 @@
 
 浏览器六角格回合制战棋，以1941年比亚韦斯托克—明斯克方向为战役地图。纯 HTML、CSS、JavaScript，无运行依赖。
 
+[直接游玩](https://dragonkillerlaw.github.io/iron-and-fog/)
+
 ## 运行
 
 安装 Node.js 18 或更高版本，在本目录运行：
