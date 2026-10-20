@@ -1,5 +1,4 @@
 (function(root){'use strict';
-// A deployment study, not a combat simulation. Coordinates are schematic.
 const board={cols:81,rows:67,width:4960,height:3630};
 const bounds={west:21.6,east:30.4,south:51.4,north:55.2};
 const palette={plain:'#ddd9b8',forest:'#879b74',marsh:'#9c8aa4',hill:'#c3b485',river:'#5995b2',bridge:'#dfbd75',town:'#bdad91'};
@@ -42,32 +41,32 @@ const ellipses={forest:[[24.0,52.65,.40,.31],[23.35,53.84,.3,.28],[24.1,54.04,.2
 const inside=(lon,lat,a)=>((lon-a[0])/a[2])**2+((lat-a[1])/a[3])**2<1;
 function terrain(q,r){const k=key(q,r);if(water.has(k))return roads.has(k)?'bridge':'river';if(townCells.has(k))return 'town';const lon=bounds.west+(q+(r&1)*.5)/80*(bounds.east-bounds.west),lat=bounds.north-r/66*(bounds.north-bounds.south);for(const type of ['marsh','forest','hill'])if(ellipses[type].some(a=>inside(lon,lat,a)))return type;return 'plain';}
 const groups=[
- {id:'p3',side:'de',name:'第3装甲集群',short:'PzGr. 3',commander:'赫尔曼·霍特',area:'苏瓦乌基北翼',lon:22.9,lat:54.43,description:'北翼装甲突击群。箭线指示经涅曼河、维尔纽斯方向向明斯克迂回的计划轴线。'},
+ {id:'p3',side:'de',name:'第3装甲集群',short:'PzGr. 3',commander:'赫尔曼·霍特',area:'苏瓦乌基北翼',lon:22.9,lat:54.43,description:'北翼装甲突击群，经涅曼河、维尔纽斯方向向明斯克迂回。'},
  {id:'a9',side:'de',name:'第9集团军',short:'AOK 9',commander:'阿道夫·施特劳斯',area:'突出部西北缘',lon:22.28,lat:53.60,description:'步兵主力位于突出部西北缘，配合装甲部队压迫与包围突出部。'},
  {id:'a4',side:'de',name:'第4集团军',short:'AOK 4',commander:'京特·冯·克鲁格',area:'突出部西南缘',lon:22.70,lat:52.62,description:'步兵主力沿突出部西南缘展开；布列斯特要塞是本方向的重要节点。'},
  {id:'p2',side:'de',name:'第2装甲集群',short:'PzGr. 2',commander:'海因茨·古德里安',area:'布列斯特以西、南侧',lon:23.20,lat:51.88,description:'南翼装甲突击群。通过布格河地带后，经斯洛尼姆、巴拉诺维奇方向趋向明斯克。'},
- {id:'s11',side:'su',name:'第11集团军南翼',short:'11 A · NW',commander:'瓦西里·莫罗佐夫',area:'阿利图斯—维尔纽斯',lon:24.5,lat:54.55,description:'西北方面军相邻防区，仅展示与中央集团军北翼相接的部分部队，不纳入西方面军编制。'},
+ {id:'s11',side:'su',name:'第11集团军南翼',short:'11 A · NW',commander:'瓦西里·莫罗佐夫',area:'阿利图斯—维尔纽斯',lon:24.5,lat:54.55,description:'西北方面军南翼，防守阿利图斯—维尔纽斯方向。'},
  {id:'s3',side:'su',name:'第3集团军',short:'3 A',commander:'瓦西里·库兹涅佐夫',area:'格罗德诺地带',lon:23.9,lat:53.75,description:'苏军突出部北肩，包含第11机械化军的机动部队。'},
  {id:'s10',side:'su',name:'第10集团军',short:'10 A',commander:'康斯坦丁·戈卢别夫',area:'比亚韦斯托克突出部',lon:23.55,lat:53.15,description:'突出部主力区，配属第6、第13机械化军及第6骑兵军等部队。'},
  {id:'s4',side:'su',name:'第4集团军',short:'4 A',commander:'亚历山大·科罗布科夫',area:'布列斯特—科布林',lon:24.03,lat:52.24,description:'苏军南翼防区；第14机械化军位于布列斯特—科布林地区。'},
- {id:'reserve',side:'su',name:'西方面军后方',short:'FRONT',commander:'德米特里·巴甫洛夫',area:'斯洛尼姆—明斯克纵深',lon:26.5,lat:53.65,description:'方面军直属与纵深部队分别展开。第13集团军在开战时仅以司令部标记表示，未虚构为齐装满员的防线。'}
+ {id:'reserve',side:'su',name:'西方面军后方',short:'FRONT',commander:'德米特里·巴甫洛夫',area:'斯洛尼姆—明斯克纵深',lon:26.5,lat:53.65,description:'方面军直属部队与后方守军部署于斯洛尼姆—明斯克纵深。'}
 ];
 // Manually inspected source rectangles: these concept sheets are not uniform spritesheets.
 const art={
- deInf:{file:'02-specialists.png',rect:[997,817,253,423],note:'复用德军机动步兵形象；步兵装备细分待补齐。'},
- suInf:{file:'01-infantry.png',rect:[650,25,295,375],note:'复用苏军步兵概念形象，不能据持枪姿势推断全师武器配比。'},
- mg:{file:'01-infantry.png',rect:[4,480,377,295],note:'德军机枪组概念形象。'},
- mortar:{file:'01-infantry.png',rect:[642,440,294,330],note:'苏军迫击炮组概念形象。'},
- light:{file:'04-armor-artillery.png',rect:[5,145,303,255],note:'通用轻坦概念占位，原图为美式轮廓；不代表本编队实际型号。'},
- medium:{file:'04-armor-artillery.png',rect:[316,150,305,255],note:'苏式中坦概念占位，炮塔与炮管不作为1941年型号考据。'},
- assault:{file:'04-armor-artillery.png',rect:[5,515,310,240],note:'短管突击炮概念形象；涂装为占位。'},
- gun:{file:'04-armor-artillery.png',rect:[941,549,312,211],note:'通用牵引反坦克炮，非精确口径、型号复原。'},
- howitzer:{file:'04-armor-artillery.png',rect:[10,915,300,270],note:'通用牵引火炮形象；以编制说明为准。'},
- aa:{file:'04-armor-artillery.png',rect:[948,827,303,349],note:'通用高射炮形象，非具体高炮营的型号复原。'},
- recon:{file:'02-specialists.png',rect:[324,874,350,348],note:'德军摩托侦察队概念形象。'},
- cavalry:{file:'02-specialists.png',rect:[13,809,311,413],note:'骑兵概念占位，原图为波兰骑兵形象。'},
- engineer:{file:'03-command-support.png',rect:[972,4,278,418],note:'工兵概念占位，原图为苏式制服。'},
- supply:{file:'03-command-support.png',rect:[5,823,305,415],note:'补给人员概念占位，原图为意式制服；用于表示辎重节点。'}
+ deInf:{file:'02-specialists.png',rect:[997,817,253,423],note:'德军步兵'},
+ suInf:{file:'01-infantry.png',rect:[650,25,295,375],note:'苏军步兵'},
+ mg:{file:'01-infantry.png',rect:[4,480,377,295],note:'德军机枪组'},
+ mortar:{file:'01-infantry.png',rect:[642,440,294,330],note:'苏军迫击炮组'},
+ light:{file:'04-armor-artillery.png',rect:[5,145,303,255],note:'轻型坦克'},
+ medium:{file:'04-armor-artillery.png',rect:[316,150,305,255],note:'中型坦克'},
+ assault:{file:'04-armor-artillery.png',rect:[5,515,310,240],note:'短管突击炮'},
+ gun:{file:'04-armor-artillery.png',rect:[941,549,312,211],note:'牵引反坦克炮'},
+ howitzer:{file:'04-armor-artillery.png',rect:[10,915,300,270],note:'牵引火炮'},
+ aa:{file:'04-armor-artillery.png',rect:[948,827,303,349],note:'高射炮'},
+ recon:{file:'02-specialists.png',rect:[324,874,350,348],note:'德军摩托侦察队'},
+ cavalry:{file:'02-specialists.png',rect:[13,809,311,413],note:'骑兵'},
+ engineer:{file:'03-command-support.png',rect:[972,4,278,418],note:'工兵'},
+ supply:{file:'03-command-support.png',rect:[5,823,305,415],note:'补给人员'}
 };
 Object.assign(art,{
  medic:{file:'03-command-support.png',rect:[672,420,232,398],note:'战地医疗兵'},
@@ -81,17 +80,16 @@ const categories={infantry:'步兵',armor:'装甲',artillery:'火炮',recon:'侦
 const units=[],occupied=new Set();
 function borderX(y){const points=border.map(p=>geo(...p));for(let i=1;i<points.length;i++)if(y>=points[i-1].y&&y<=points[i].y){const a=points[i-1],b=points[i],f=(y-a.y)/(b.y-a.y);return a.x+(b.x-a.x)*f;}return points[points.length-1].x;}
 function place(lon,lat,side){const origin=grid(lon,lat),options=[];for(let dr=-8;dr<=8;dr++)for(let dq=-8;dq<=8;dq++){const q=origin.q+dq,r=origin.r+dr,p=position(q,r),west=p.x<borderX(p.y);if(q<1||q>=80||r<1||r>=66||occupied.has(key(q,r))||['river','marsh','town'].includes(terrain(q,r))||(side==='de'?!west:west))continue;options.push({q,r,score:dq*dq+dr*dr+(terrain(q,r)==='forest'?1:0)});}options.sort((a,b)=>a.score-b.score||a.r-b.r||a.q-b.q);if(!options.length)throw Error('No deployment cell');const p=options[0];occupied.add(key(p.q,p.r));return {q:p.q,r:p.r};}
-function add(group,name,category,asset,lon,lat,equipment,designation='缩编部署示意'){
+function add(group,name,category,asset,lon,lat,equipment,designation='作战群'){
  const g=groups.find(x=>x.id===group);units.push({id:'b'+units.length,group,side:g.side,name,category,asset,...place(lon,lat,g.side),equipment,designation});
 }
-const equipment={deInf:'步枪、机枪、迫击炮；一个标记代表师／军内的缩编作战群。',suInf:'步枪、轻重机枪、迫击炮；一个标记代表缩编步兵群。',deArmor:'1941年德军装甲混合编制：Pz I/II、Pz III/IV及部分捷制坦克；具体配比未在本版量化。',suArmor:'T-26、BT系列为主要旧式装备；部分机械化部队另有T-34与KV。图标不表示库存数量。',gun:'牵引反坦克火炮与牵引运输；型号与口径暂未逐营还原。',howitzer:'牵引式野战炮、榴弹炮与弹药保障；本版只摆放位置。',supply:'油料、弹药、运输与维修保障节点；位置为关卡预设。'};
-function cluster(group,kind,count,asset,lon,lat,spread=.22){const g=groups.find(x=>x.id===group),name=({mg:'机枪',mortar:'迫击炮',gun:'反坦克炮',assault:'突击炮',recon:'摩托侦察'})[asset]||categories[kind],description=kind==='infantry'?equipment[g.side==='de'?'deInf':'suInf']:asset==='assault'?'1941年短管StuG III类步兵支援突击炮，聚合支援标记。':asset==='recon'?'摩托车与侦察人员，负责联络和前沿侦察。':asset==='mortar'?'步兵迫击炮与弹药保障，支援编队示意。':equipment[kind==='artillery'?(asset==='gun'?'gun':'howitzer'):'supply'];for(let i=0;i<count;i++){const row=Math.floor(i/3),col=i%3;add(group,g.name+' · '+name+'群 '+(i+1),kind,asset,lon+(col-1)*spread,lat-row*.15,description);}}
-// Historic named formations are a selection; supporting markers are explicitly aggregated.
+const equipment={deInf:'步枪、机枪、迫击炮。',suInf:'步枪、轻重机枪、迫击炮。',deArmor:'Pz I/II、Pz III/IV及捷制坦克。',suArmor:'T-26、BT系列坦克；部分机械化部队配备T-34与KV。',gun:'牵引反坦克火炮与运输车辆。',howitzer:'牵引式野战炮、榴弹炮与弹药保障。',supply:'油料、弹药、运输与维修保障。'};
+function cluster(group,kind,count,asset,lon,lat,spread=.22){const g=groups.find(x=>x.id===group),name=({mg:'机枪',mortar:'迫击炮',gun:'反坦克炮',assault:'突击炮',recon:'摩托侦察'})[asset]||categories[kind],description=kind==='infantry'?equipment[g.side==='de'?'deInf':'suInf']:asset==='assault'?'短管StuG III突击炮，提供步兵火力支援。':asset==='recon'?'摩托车与侦察人员，负责联络和前沿侦察。':asset==='mortar'?'步兵迫击炮与弹药保障。':equipment[kind==='artillery'?(asset==='gun'?'gun':'howitzer'):'supply'];for(let i=0;i<count;i++){const row=Math.floor(i/3),col=i%3;add(group,g.name+' · '+name+'群 '+(i+1),kind,asset,lon+(col-1)*spread,lat-row*.15,description);}}
 for(const [group,divs,lon,lat] of [['p3',[7,20,12,19],23.03,54.60],['p2',[3,4,10,17,18],23.18,52.04]]){
- divs.forEach((n,i)=>add(group,'第'+n+'装甲师','armor','light',lon+(i%3)*.18,lat-Math.floor(i/3)*.15,equipment.deArmor,'历史师番号 · 大致集结区'));
+ divs.forEach((n,i)=>add(group,'第'+n+'装甲师','armor','light',lon+(i%3)*.18,lat-Math.floor(i/3)*.15,equipment.deArmor,'装甲师'));
  cluster(group,'infantry',3,'deInf',lon-.25,lat-.28,.17);cluster(group,'recon',2,'recon',lon+.18,lat+.1,.20);
  cluster(group,'artillery',2,'howitzer',lon-.38,lat+.06,.16);cluster(group,'support',2,'supply',lon-.58,lat-.10,.18);
- add(group,'装甲集群 · 渡河工兵','support','engineer',lon+.30,lat-.24,'架桥、舟桥与渡河器材；桥位为设计示意。');
+ add(group,'装甲集群 · 渡河工兵','support','engineer',lon+.30,lat-.24,'架桥、舟桥与渡河器材。');
  if(group==='p2')cluster(group,'armor',2,'assault',lon-.15,lat-.38,.2);
 }
 for(const [id,lon,lat,count] of [['a9',22.47,53.72,8],['a4',22.72,52.69,9]]){
@@ -102,17 +100,17 @@ for(const [id,lon,lat,count] of [['s3',23.76,53.85,5],['s10',23.26,53.25,7],['s4
 }
 cluster('s11','infantry',5,'suInf',24.15,54.53,.24);cluster('s11','artillery',2,'gun',24.55,54.62,.25);
 for(const [group,n,lon,lat,medium] of [['s3',11,24.06,53.83,true],['s10',6,23.65,53.12,true],['s10',13,23.3,52.80,false],['s4',14,24.2,52.25,false],['reserve',17,25.28,52.94,false],['reserve',20,27.04,53.59,false]]){
- add(group,'第'+n+'机械化军 · 坦克部','armor',medium?'medium':'light',lon,lat,equipment.suArmor,'历史军番号 · 坦克部缩编');
- add(group,'第'+n+'机械化军 · 摩托化部','infantry','suInf',lon+.24,lat-.12,'机械化军所属摩托化步兵及运输；实际完备程度并不相同。','历史军番号 · 摩托化部缩编');
+ add(group,'第'+n+'机械化军 · 坦克部','armor',medium?'medium':'light',lon,lat,equipment.suArmor,'机械化军 · 坦克部');
+ add(group,'第'+n+'机械化军 · 摩托化部','infantry','suInf',lon+.24,lat-.12,'机械化军所属摩托化步兵及运输。','机械化军 · 摩托化部');
 }
-add('s10','第6骑兵军 · 骑兵部','recon','cavalry',23.84,53.20,'骑乘机动、下马作战；原图为通用骑兵占位。','历史军番号 · 缩编');
-add('s4','布列斯特要塞守备','infantry','suInf',23.73,52.07,'要塞守备部队聚合标记；并非独立满编师。','历史地点 · 聚合标记');
-add('reserve','第100步兵师','infantry','suInf',27.39,53.95,equipment.suInf,'历史师番号 · 明斯克地区示意');
-add('reserve','第161步兵师','infantry','suInf',27.10,54.05,equipment.suInf,'历史师番号 · 明斯克地区示意');
+add('s10','第6骑兵军 · 骑兵部','recon','cavalry',23.84,53.20,'骑乘机动、下马作战。','骑兵部队');
+add('s4','布列斯特要塞守备','infantry','suInf',23.73,52.07,'布列斯特要塞守备部队。','要塞守备');
+add('reserve','第100步兵师','infantry','suInf',27.39,53.95,equipment.suInf,'明斯克守军');
+add('reserve','第161步兵师','infantry','suInf',27.10,54.05,equipment.suInf,'明斯克守军');
 cluster('reserve','infantry',3,'suInf',26.35,53.88,.35);cluster('reserve','support',3,'supply',27.96,54.05,.22);
-add('reserve','明斯克 · 防空节点','artillery','aa',27.66,53.95,'城市防空预设节点；没有绑定未经核对的团、营番号。');
-for(const g of groups)add(g.id,g.name+' · 指挥部','hq',null,g.lon-.18,g.lat+.18,g.commander+'指挥；图上为便于查阅而设置的指挥标记。','真实指挥关系 · 位置示意');
-add('reserve','第13集团军 · 司令部','hq',null,27.25,53.82,'彼得·菲拉托夫；开战时只有司令部框架，本版不为其虚设所属作战师。','历史司令部 · 未展开集团军');
+add('reserve','明斯克 · 防空节点','artillery','aa',27.66,53.95,'明斯克城市防空部队。');
+for(const g of groups)add(g.id,g.name+' · 指挥部','hq',null,g.lon-.18,g.lat+.18,g.commander+'指挥。','指挥部');
+add('reserve','第13集团军 · 司令部','hq',null,27.25,53.82,'彼得·菲拉托夫指挥。','集团军司令部');
 // Reinforcements for the asymmetric playable scenario.
 for(const g of groups){
  const count=g.side==='de'?1:2;
