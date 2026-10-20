@@ -32,13 +32,90 @@ function unitAttack(u){const r=role(u),su=u.side==='su',modern=su&&u.asset==='me
 function unitArt(u){const r=role(u);return r==='medic'?(u.side==='su'?'medicSu':'medic'):r==='engineer'?'engineer':r==='hq'?(u.side==='su'?'officerSu':'officer'):u.asset||(r==='mg'?'mg':u.side==='su'?'suInf':'deInf');}
 const AIR_LIMITS={recon:2,strike:2};
 function airBudget(){return {de:{...AIR_LIMITS},su:{...AIR_LIMITS}};}
+function genBattleId(){return 'b_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);}
+function blankSideBattleStats(){return {damage:0,healed:0,resupplied:0,captures:0,kills:0};}
+function blankBattleStats(){return {de:blankSideBattleStats(),su:blankSideBattleStats()};}
+const VET_THRESHOLDS=[0,40,100,200];
+const VET_NAMES=['新兵','熟练','老兵','精锐'];
+const VET_BONUSES=[0,0.04,0.08,0.12];
+function veteran(u){
+ const xp=Number.isFinite(u?.xp)?Math.max(0,Math.min(200,Math.floor(u.xp))):0;
+ let level=0;
+ if(xp>=200)level=3;
+ else if(xp>=100)level=2;
+ else if(xp>=40)level=1;
+ else level=0;
+ const next=level>=3?null:VET_THRESHOLDS[level+1];
+ return {level,name:VET_NAMES[level],bonus:VET_BONUSES[level],next,xp};
+}
+function awardXp(s,u,amount){
+ if(!s||!u||!Number.isFinite(amount)||amount<=0)return;
+ const prev=veteran(u);
+ u.xp=Math.max(0,Math.min(200,Math.floor((Number.isFinite(u.xp)?u.xp:0)+amount)));
+ const next=veteran(u);
+ if(next.level>prev.level){
+  pushEvent(s,{
+   type:'promotion',
+   at:{q:u.q,r:u.r},
+   side:u.side,
+   name:u.name,
+   rank:next.name,
+   audience:eventAudienceAt(s,u,u.side)
+  });
+ }
+}
+function pushEvent(s,ev){
+ if(!s)return;
+ if(!Array.isArray(s._events))s._events=[];
+ s._events.push(ev);
+ if(s._events.length>100)s._events.splice(0,s._events.length-100);
+}
+function drainEvents(s){
+ if(!s||!Array.isArray(s._events))return [];
+ const list=s._events;
+ s._events=[];
+ return list;
+}
+function eventAudienceAt(s,pos,extraSide){
+ const aud=new Set();
+ if(extraSide&&['de','su'].includes(extraSide))aud.add(extraSide);
+ if(pos){
+  const k=key(pos.q,pos.r);
+  for(const side of ['de','su']){
+   if(vision(s,side).has(k))aud.add(side);
+  }
+ }
+ return [...aud];
+}
+function ensureProgress(s){
+ if(!s)return s;
+ if(!s.battleId)s.battleId=genBattleId();
+ if(!s.battleStats||typeof s.battleStats!=='object'){
+  s.battleStats=blankBattleStats();
+ }else{
+  for(const side of ['de','su']){
+   if(!s.battleStats[side]||typeof s.battleStats[side]!=='object')s.battleStats[side]=blankSideBattleStats();
+   for(const field of ['damage','healed','resupplied','captures','kills']){
+    s.battleStats[side][field]=Number.isFinite(s.battleStats[side][field])?Math.max(0,Math.floor(s.battleStats[side][field])):0;
+   }
+  }
+ }
+ if(Array.isArray(s.units)){
+  for(const u of s.units){
+   u.xp=Number.isFinite(u.xp)?Math.max(0,Math.min(200,Math.floor(u.xp))):0;
+   u.kills=Number.isFinite(u.kills)?Math.max(0,Math.floor(u.kills)):0;
+  }
+ }
+ if(!Array.isArray(s._events))s._events=[];
+ return s;
+}
 function phase(s){return s.round+':'+s.active;}
 const isFoot=u=>['rifle','mg','engineer','medic','hq'].includes(u.role);
 const alive=u=>u.status==='active';
 const isCombat=u=>['rifle','mg','armor','at','artillery','recon','engineer'].includes(u.role);
 function newGame(mode='campaign'){
- const s={version:3,balanceVersion:1,round:1,active:'de',units:[],forts:{},bridges:{},air:airBudget(),airRecon:{de:[],su:[]},cities:{},logs:[],explored:{de:new Set(),su:new Set()},revision:0,mode:mode==='tutorial'?'tutorial':'campaign',result:null,tutorialProgress:{moved:false,attacked:false,supported:false},lastTurnReport:null};
- s.units=D.units.map(u=>{const ro=role(u),p=profiles[ro],su=u.side==='su',modern=su&&u.asset==='medium',hp=ro==='armor'?(modern?145:su?115:125):['supply','medic','hq'].includes(ro)?80:su?130:110;return {...u,role:ro,asset:unitArt(u),autoSupport:ro==='medic',project:null,hp,maxHp:hp,morale:su?(modern?60:48):86,ammo:su?5:8,maxAmmo:8,fuel:su?65:100,maxFuel:100,stock:ro==='engineer'?3:ro==='medic'?5:ro==='supply'?12:0,attack:unitAttack(u),defense:Math.round(p.defense*(su?.75:1.15)*(modern?1.65:1)),maxMove:Math.max(2,p.move-(su?1:0)),mp:Math.max(2,p.move-(su?1:0)),acted:false,moved:false,status:'active',isolated:0,modern};});
+ const s={version:3,balanceVersion:1,round:1,active:'de',units:[],forts:{},bridges:{},air:airBudget(),airRecon:{de:[],su:[]},cities:{},logs:[],explored:{de:new Set(),su:new Set()},revision:0,mode:mode==='tutorial'?'tutorial':'campaign',result:null,tutorialProgress:{moved:false,attacked:false,supported:false},lastTurnReport:null,battleId:genBattleId(),battleStats:blankBattleStats(),_events:[]};
+ s.units=D.units.map(u=>{const ro=role(u),p=profiles[ro],su=u.side==='su',modern=su&&u.asset==='medium',hp=ro==='armor'?(modern?145:su?115:125):['supply','medic','hq'].includes(ro)?80:su?130:110;return {...u,role:ro,asset:unitArt(u),autoSupport:ro==='medic',project:null,hp,maxHp:hp,morale:su?(modern?60:48):86,ammo:su?5:8,maxAmmo:8,fuel:su?65:100,maxFuel:100,stock:ro==='engineer'?3:ro==='medic'?5:ro==='supply'?12:0,attack:unitAttack(u),defense:Math.round(p.defense*(su?.75:1.15)*(modern?1.65:1)),maxMove:Math.max(2,p.move-(su?1:0)),mp:Math.max(2,p.move-(su?1:0)),acted:false,moved:false,status:'active',isolated:0,modern,xp:0,kills:0};});
  for(const t of D.towns)s.cities[t.id]=D.position(t.q,t.r).x<D.borderX(D.position(t.q,t.r).y)?'de':'su';
  for(const u of s.units)u.waiting=false;
  if(s.mode==='tutorial'){
@@ -55,6 +132,7 @@ function newGame(mode='campaign'){
    deployed.push(u);
   }
   s.units=deployed;s.cities.brest='su';s.cities.kobryn='su';
+  for(const u of s.units){u.xp=0;u.kills=0;}
  }
  s.initialCounts={de:s.units.filter(u=>u.side==='de').length,su:s.units.filter(u=>u.side==='su').length};
  invalidate(s);updateSight(s);return s;
@@ -75,24 +153,99 @@ function reachable(s,u,known=true){const result=new Map(),start=key(u.q,u.r),que
   for(const p of neighbors(current)){if(s.missionArea&&(p.q<s.missionArea.minQ||p.q>s.missionArea.maxQ||p.r<s.missionArea.minR||p.r>s.missionArea.maxR))continue;const target=occupied(s,p);if(target&&target.id!==u.id&&(!known||target.side===u.side||canSee(s,target,u.side)))continue;const cost=node.cost+moveCost(s,u,p),k=key(p.q,p.r);if(cost>budget||cost>=(result.get(k)?.cost??Infinity))continue;result.set(k,{...p,cost,path:[...node.path,p]});queue.push({...p,cost});}
  }return result;
 }
-function remove(s,u,status){if(u.project)pauseBridge(s,u,'部队退场');u.status=status;u.mp=0;u.acted=true;log(s,u.name+(status==='captured'?'被俘退场':status==='routed'?'溃散退场':'战斗力耗尽'),u,u.side);for(const other of s.units)if(alive(other)&&other.side===u.side&&distance(u,other)<=3)other.morale=Math.max(0,other.morale-(u.role==='hq'?18:8));invalidate(s);}
-function triggerMine(s,u,p){const f=s.forts[key(p.q,p.r)];if(f?.type==='mine'&&f.side!==u.side){const damage=u.role==='armor'?35:25;u.hp=Math.max(0,u.hp-damage);u.morale=Math.max(0,u.morale-12);u.mp=0;delete s.forts[key(p.q,p.r)];log(s,u.name+'触雷，损失'+damage,p,u.side);if(u.hp===0)remove(s,u,'destroyed');return true;}return false;}
-function captureCity(s,u){for(const t of D.towns)if(u.q===t.q&&u.r===t.r&&alive(u)&&s.cities[t.id]!==u.side){s.cities[t.id]=u.side;u.morale=Math.min(100,u.morale+8);log(s,u.name+'占领'+t.name,u,u.side);}}
+function remove(s,u,status,killer){if(u.project)pauseBridge(s,u,'部队退场');u.status=status;u.mp=0;u.acted=true;log(s,u.name+(status==='captured'?'被俘退场':status==='routed'?'溃散退场':'战斗力耗尽'),u,u.side);
+ pushEvent(s,{
+  type:'defeated',
+  at:{q:u.q,r:u.r},
+  side:u.side,
+  status,
+  audience:eventAudienceAt(s,u,u.side)
+ });
+ if(status==='destroyed'&&killer&&['de','su'].includes(killer.side)){
+  if(s.battleStats?.[killer.side])s.battleStats[killer.side].kills++;
+  if(killer.id){
+   const killerUnit=s.units?.find(v=>v.id===killer.id);
+   if(killerUnit){
+    killerUnit.kills=(killerUnit.kills||0)+1;
+   }
+  }
+ }
+ for(const other of s.units)if(alive(other)&&other.side===u.side&&distance(u,other)<=3)other.morale=Math.max(0,other.morale-(u.role==='hq'?18:8));invalidate(s);}
+function triggerMine(s,u,p){const f=s.forts[key(p.q,p.r)];if(f?.type==='mine'&&f.side!==u.side){const damageAmount=u.role==='armor'?35:25;const actualDamage=Math.min(u.hp,damageAmount);if(s.battleStats?.[f.side])s.battleStats[f.side].damage+=actualDamage;u.hp=Math.max(0,u.hp-damageAmount);u.morale=Math.max(0,u.morale-12);u.mp=0;delete s.forts[key(p.q,p.r)];log(s,u.name+'触雷，损失'+actualDamage,p,u.side);
+ pushEvent(s,{
+  type:'hit',
+  at:{q:p.q,r:p.r},
+  amount:actualDamage,
+  role:'mine',
+  audience:eventAudienceAt(s,p,u.side)
+ });
+ if(u.hp===0)remove(s,u,'destroyed',{side:f.side});return true;}return false;}
+function captureCity(s,u){for(const t of D.towns)if(u.q===t.q&&u.r===t.r&&alive(u)&&s.cities[t.id]!==u.side){const previous=s.cities[t.id];s.cities[t.id]=u.side;if(s.battleStats?.[u.side])s.battleStats[u.side].captures++;u.morale=Math.min(100,u.morale+8);log(s,u.name+'占领'+t.name,u,u.side);
+ pushEvent(s,{
+  type:'city',
+  at:{q:t.q,r:t.r},
+  name:t.name,
+  side:u.side,
+  previous,
+  audience:(()=>{
+   const aud=new Set();
+   if(previous)aud.add(previous);
+   aud.add(u.side);
+   const k=key(t.q,t.r);
+   for(const side of ['de','su'])if(vision(s,side).has(k))aud.add(side);
+   return [...aud];
+  })()
+ });
+}}
 function advanceReason(s,u){if(s?.result)return '战役已结束';const p=u?.advance;if(!u||!alive(u)||u.role!=='armor'||u.side!==s.active||!u.acted||!p||p.round!==s.round||p.fromQ!==u.q||p.fromR!==u.r||!Number.isInteger(p.q)||!Number.isInteger(p.r)||!inside(p.q,p.r)||distance(u,p)!==1)return '没有可用的战后突进';if(s.missionArea&&(p.q<s.missionArea.minQ||p.q>s.missionArea.maxQ||p.r<s.missionArea.minR||p.r>s.missionArea.maxR))return '超出作战区域';if(occupied(s,p))return '目标格已被占用';const cost=moveCost(s,u,p);if(!Number.isFinite(cost))return '地形或桥梁不能通行坦克';if(u.fuel<cost*5)return '燃油不足';return '';}
 function declineAdvance(s,id){if(s.result)return {ok:false,message:'战役已结束'};const u=s.units.find(u=>u.id===id);if(!u||u.side!==s.active||!u.advance)return {ok:false,message:'没有待处理的突进'};delete u.advance;return {ok:true,message:'原地停留'};}
-function advance(s,id){if(s.result)return {ok:false,message:'战役已结束'};const u=s.units.find(u=>u.id===id),reason=advanceReason(s,u);if(reason)return {ok:false,message:reason};const p=u.advance,cost=moveCost(s,u,p);delete u.advance;u.q=p.q;u.r=p.r;u.fuel-=cost*5;u.moved=true;u.acted=true;u.mp=0;if(u.side==='de'&&s.tutorialProgress)s.tutorialProgress.moved=true;log(s,u.name+'战后突进',p,u.side);const mined=triggerMine(s,u,p);captureCity(s,u);invalidate(s);updateSight(s);return {ok:true,message:mined?'突进遭遇雷区，兵力受损':'突进完成，本回合不能再次移动或攻击'};}
+function advance(s,id){if(s.result)return {ok:false,message:'战役已结束'};const u=s.units.find(u=>u.id===id),reason=advanceReason(s,u);if(reason)return {ok:false,message:reason};const p=u.advance,cost=moveCost(s,u,p);const fromPos={q:u.q,r:u.r};delete u.advance;u.q=p.q;u.r=p.r;u.fuel-=cost*5;u.moved=true;u.acted=true;u.mp=0;
+ const moveAudience=['de','su'].filter(side=>side===u.side||(vision(s,side).has(key(fromPos.q,fromPos.r))&&vision(s,side).has(key(p.q,p.r))));
+ if(moveAudience.length){
+  pushEvent(s,{
+   type:'move',
+   unitId:u.id,
+   side:u.side,
+   role:u.role,
+   from:fromPos,
+   to:{q:p.q,r:p.r},
+   audience:moveAudience
+  });
+ }
+ if(u.side==='de'&&s.tutorialProgress)s.tutorialProgress.moved=true;log(s,u.name+'战后突进',p,u.side);const mined=triggerMine(s,u,p);captureCity(s,u);invalidate(s);updateSight(s);return {ok:true,message:mined?'突进遭遇雷区，兵力受损':'突进完成，本回合不能再次移动或攻击'};}
 function aiAdvance(s,u){if(s.result)return;if(advanceReason(s,u))return;const f=s.forts[key(u.advance.q,u.advance.r)];if(f?.type==='mine'&&f.side!==u.side&&fortVisible(s,f,u.side)){declineAdvance(s,u.id);return;}advance(s,u.id);}
 function move(s,id,q,r){if(s.result)return {ok:false,message:'战役已结束'};const u=s.units.find(u=>u.id===id);if(!u||u.side!==s.active||!alive(u)||u.acted)return {ok:false,message:'该部队当前不能移动'};const route=reachable(s,u,true).get(key(q,r));if(!route||!route.path.length)return {ok:false,message:'超出移动范围或道路被阻挡'};let moved=0;
+ const startPos={q:u.q,r:u.r};
  for(const p of route.path){const blocker=occupied(s,p);if(blocker&&blocker.id!==u.id){log(s,'前方出现敌军，行军停止',p,u.side);break;}const c=moveCost(s,u,p);if(!moved&&u.project)pauseBridge(s,u,'转移');u.q=p.q;u.r=p.r;u.mp-=c;if(u.role==='armor')u.fuel=Math.max(0,u.fuel-c*5);u.moved=true;moved++;
   if(triggerMine(s,u,p))break;
   if(zoc(s,u,u.side)){u.mp=0;break;}
+ }
+ if(moved>0){
+  const endPos={q:u.q,r:u.r};
+  const moveAudience=['de','su'].filter(side=>side===u.side||(vision(s,side).has(key(startPos.q,startPos.r))&&vision(s,side).has(key(endPos.q,endPos.r))));
+  if(moveAudience.length){
+   pushEvent(s,{
+    type:'move',
+    unitId:u.id,
+    side:u.side,
+    role:u.role,
+    from:startPos,
+    to:endPos,
+    audience:moveAudience
+   });
+  }
  }
  captureCity(s,u);
  if(moved>0&&u.side==='de'&&s.tutorialProgress)s.tutorialProgress.moved=true;
  invalidate(s);updateSight(s);return {ok:moved>0,message:moved?'行军完成':'敌军阻挡了通路'};
 }
 function attackReason(s,a,b){if(s?.result)return '战役已结束';if(!a||!b||!alive(a)||!alive(b)||a.side!==s.active||a.side===b.side)return '无法攻击';if(a.acted)return '本回合已行动';if(a.ammo<=0)return '弹药耗尽';if(!canSee(s,b,a.side))return '目标未被发现';if(distance(a,b)>profiles[a.role].range)return '目标超出射程';if(a.role!=='artillery'&&!lineClear(a,b))return '射线被建筑或地形遮挡';return '';}
-function damage(s,a,b){let power=a.attack*(.6+.4*a.hp/a.maxHp)*(.55+a.morale/180),def=b.defense;
+function damage(s,a,b){
+ const aBonus=veteran(a).bonus;
+ const bBonus=veteran(b).bonus;
+ const effectiveAtk=a.attack*(1+aBonus);
+ const effectiveDef=b.defense*(1+bBonus);
+ let power=effectiveAtk*(.6+.4*a.hp/a.maxHp)*(.55+a.morale/180),def=effectiveDef;
  if(a.role==='mg'&&isFoot(b))power*=1.6;if(a.role==='mg'&&b.role==='armor')power*=.4;
  if(a.role==='at')power*=b.role==='armor'?1.7:.65;
  if(a.role==='armor'&&urban.has(key(a.q,a.r)))power*=.7;
@@ -101,23 +254,92 @@ function damage(s,a,b){let power=a.attack*(.6+.4*a.hp/a.maxHp)*(.55+a.morale/180
  if(isFoot(b)&&s.forts[key(b.q,b.r)]?.type==='trench')cover*=.6;
  return Math.max(3,Math.round((power-def*.45)*cover));
 }
-function attack(s,id,target){if(s.result)return {ok:false,message:'战役已结束'};const a=s.units.find(u=>u.id===id),b=s.units.find(u=>u.id===target),reason=attackReason(s,a,b);if(reason)return {ok:false,message:reason};const hit=damage(s,a,b);if(a.project)pauseBridge(s,a,'执行攻击');if(b.project)pauseBridge(s,b,'遭到攻击');a.ammo--;a.acted=true;a.mp=0;if(a.side==='de'&&s.tutorialProgress)s.tutorialProgress.attacked=true;b.hp=Math.max(0,b.hp-hit);b.morale=Math.max(0,b.morale-8-Math.floor(hit/5)-(a.role==='mg'&&isFoot(b)?12:a.role==='artillery'?8:0));log(s,a.name+'攻击'+b.name+'，损失'+hit,b,a.side);if(b.hp===0){remove(s,b,'destroyed');if(a.role==='armor'&&distance(a,b)===1)a.advance={q:b.q,r:b.r,fromQ:a.q,fromR:a.r,round:s.round};}invalidate(s);updateSight(s);return {ok:true,message:'命中：兵力 −'+hit+'，士气受损'};}
+function attack(s,id,target){if(s.result)return {ok:false,message:'战役已结束'};const a=s.units.find(u=>u.id===id),b=s.units.find(u=>u.id===target),reason=attackReason(s,a,b);if(reason)return {ok:false,message:reason};const hit=damage(s,a,b);if(a.project)pauseBridge(s,a,'执行攻击');if(b.project)pauseBridge(s,b,'遭到攻击');a.ammo--;a.acted=true;a.mp=0;if(a.side==='de'&&s.tutorialProgress)s.tutorialProgress.attacked=true;
+ const actualDamage=Math.min(b.hp,hit);
+ if(s.battleStats?.[a.side])s.battleStats[a.side].damage+=actualDamage;
+ b.hp=Math.max(0,b.hp-hit);b.morale=Math.max(0,b.morale-8-Math.floor(hit/5)-(a.role==='mg'&&isFoot(b)?12:a.role==='artillery'?8:0));
+ const killed=b.hp===0;
+ const xpGain=Math.min(12,Math.ceil(actualDamage/5))+(killed?12:0);
+ awardXp(s,a,xpGain);
+ log(s,a.name+'攻击'+b.name+'，损失'+actualDamage,b,a.side);
+ pushEvent(s,{
+  type:'hit',
+  at:{q:b.q,r:b.r},
+  amount:actualDamage,
+  role:a.role,
+  source:{q:a.q,r:a.r},
+  sourceAudience:eventAudienceAt(s,a,a.side),
+  audience:eventAudienceAt(s,b,b.side)
+ });
+ if(killed){remove(s,b,'destroyed',a);if(a.role==='armor'&&distance(a,b)===1)a.advance={q:b.q,r:b.r,fromQ:a.q,fromR:a.r,round:s.round};}invalidate(s);updateSight(s);return {ok:true,message:'命中：兵力 −'+actualDamage+'，士气受损'};}
 function pauseBridge(s,u,why){const b=s.bridges[u.project];if(b&&b.builder===u.id&&b.progress<3){b.paused=true;log(s,u.name+'架桥暂停：'+why,b,u.side);} }
 function bridgeReason(s,u,p){if(s.result)return '战役已结束';const b=s.bridges[key(p.q,p.r)];if(u.role!=='engineer')return '需要工兵';if(s.missionArea&&(p.q<s.missionArea.minQ||p.q>s.missionArea.maxQ||p.r<s.missionArea.minR||p.r>s.missionArea.maxR))return '超出作战区域';if(terrain(p.q,p.r)!=='river')return '请选择相邻河流格';if(b){if(b.side!==u.side)return '不能接管敌方施工';if(b.progress>=3)return '重型桥已经完工';if(b.lastWorked===phase(s))return '本轮已经施工';if(b.builder!==u.id&&!b.paused)return '另一支工兵正在施工';}else if(u.stock<2)return '架桥需要2份工程材料';if(occupied(s,p))return '桥面上有部队，请先移开';return '';}
-function workBridge(s,u,p){if(s.result)return;const k=key(p.q,p.r);if(u.project&&u.project!==k)pauseBridge(s,u,'更换工地');let b=s.bridges[k];if(!b){u.stock-=2;b=s.bridges[k]={...p,side:u.side,progress:0,builder:u.id,paused:false,lastWorked:null};}if(b.builder!==u.id){const previous=s.units.find(v=>v.id===b.builder);if(previous)previous.project=null;}b.builder=u.id;b.paused=false;b.progress=Math.min(3,b.progress+1);b.lastWorked=phase(s);u.project=b.progress<3?k:null;u.acted=true;u.mp=0;log(s,u.name+'架桥 '+b.progress+'/3'+(b.progress===2?' · 步兵可通行':b.progress===3?' · 重装备可通行':''),b,u.side);invalidate(s);}
+function workBridge(s,u,p){if(s.result)return;const k=key(p.q,p.r);if(u.project&&u.project!==k)pauseBridge(s,u,'更换工地');let b=s.bridges[k];if(!b){u.stock-=2;b=s.bridges[k]={...p,side:u.side,progress:0,builder:u.id,paused:false,lastWorked:null};}if(b.builder!==u.id){const previous=s.units.find(v=>v.id===b.builder);if(previous)previous.project=null;}b.builder=u.id;b.paused=false;b.progress=Math.min(3,b.progress+1);b.lastWorked=phase(s);u.project=b.progress<3?k:null;u.acted=true;u.mp=0;
+ awardXp(s,u,6);
+ pushEvent(s,{
+  type:'bridge',
+  at:{q:p.q,r:p.r},
+  side:u.side,
+  progress:b.progress,
+  audience:eventAudienceAt(s,p,u.side)
+ });
+ log(s,u.name+'架桥 '+b.progress+'/3'+(b.progress===2?' · 步兵可通行':b.progress===3?' · 重装备可通行':''),b,u.side);invalidate(s);}
 function progressBridges(s){if(s.result)return;for(const b of Object.values(s.bridges)){if(b.side!==s.active||b.paused||b.progress>=3||b.lastWorked===phase(s))continue;const u=s.units.find(x=>x.id===b.builder);if(!u||!alive(u)||distance(u,b)>1||u.project!==key(b.q,b.r)){b.paused=true;continue;}if((!u.acted||u.waiting)&&!u.moved&&!occupied(s,b)){const wasWaiting=u.waiting;workBridge(s,u,b);if(wasWaiting){u.waiting=true;u.acted=true;}}}}
 function abilityReason(s,u,action,p){if(s.result)return '战役已结束';if(!u||!alive(u)||u.side!==s.active||u.acted)return '本回合无法执行';if(s.missionArea&&(p.q<s.missionArea.minQ||p.q>s.missionArea.maxQ||p.r<s.missionArea.minR||p.r>s.missionArea.maxR))return '超出作战区域';if(distance(u,p)>1)return '请选择本格或相邻格';const target=occupied(s,p),f=s.forts[key(p.q,p.r)];if(action==='bridge')return bridgeReason(s,u,p);
  if(action==='heal'){if(u.role!=='medic'||u.stock<1)return '需要医疗队与医疗物资';if(!target||target.id===u.id||target.side!==u.side||!isFoot(target))return '请选择相邻友军步兵类单位';if(target.hp===target.maxHp&&target.morale===100)return '目标无需治疗';}
- else if(action==='resupply'){if(u.role!=='supply'||u.stock<1)return '需要补给队与库存';if(!target||target.id===u.id||target.side!==u.side)return '请选择相邻友军';if(target.ammo===target.maxAmmo&&target.fuel===target.maxFuel&&(target.role!=='armor'||target.hp===target.maxHp)&&!['engineer','medic'].includes(target.role))return '目标无需补给';}
+ else if(action==='resupply'){if(u.role!=='supply'||u.stock<1)return '需要补给队与库存';if(!target||target.id===u.id||target.side!==u.side)return '请选择相邻友军';const stockFull=!['engineer','medic'].includes(target.role)||target.stock>=(target.role==='engineer'?3:5);if(target.ammo===target.maxAmmo&&target.fuel===target.maxFuel&&(target.role!=='armor'||target.hp===target.maxHp)&&stockFull)return '目标无需补给';}
  else if(['mine','trench','clear'].includes(action)){if(u.role!=='engineer')return '需要工兵';if(action==='clear'){if(!f||f.type!=='mine'||!fortVisible(s,f,u.side))return '这里没有已发现的雷区';}
   else {if(u.stock<1)return '工程材料耗尽';if(f)return '已有工事';if(['river','bridge','marsh'].includes(terrain(p.q,p.r)))return '此处不能施工';if(target&&(action==='mine'||target.id!==u.id))return '请选择空地；堑壕也可在工兵脚下修筑';}}
  else return '未知行动';return '';
 }
 function ability(s,id,action,q,r){const u=s.units.find(u=>u.id===id),p={q,r},reason=abilityReason(s,u,action,p);if(reason)return {ok:false,message:reason};const target=occupied(s,p);
  if(action==='bridge'){workBridge(s,u,p);if(u.side==='de'&&s.tutorialProgress)s.tutorialProgress.supported=true;updateSight(s);return {ok:true,message:'架桥进度 '+s.bridges[key(q,r)].progress+'/3'};}if(u.project)pauseBridge(s,u,'执行其他任务');
- if(action==='heal'){target.hp=Math.min(target.maxHp,target.hp+25);target.morale=Math.min(100,target.morale+10);u.stock--;}
- else if(action==='resupply'){target.ammo=Math.min(target.maxAmmo,target.ammo+4);target.fuel=Math.min(target.maxFuel,target.fuel+35);if(target.role==='armor')target.hp=Math.min(target.maxHp,target.hp+20);if(['engineer','medic'].includes(target.role))target.stock=Math.min(target.role==='engineer'?3:5,target.stock+1);u.stock--;}
- else if(action==='clear')delete s.forts[key(q,r)];else {s.forts[key(q,r)]={q,r,type:action,side:u.side};u.stock--;}
+ if(action==='heal'){
+  const healedHp=Math.max(0,Math.min(25,target.maxHp-target.hp));
+  target.hp=Math.min(target.maxHp,target.hp+25);
+  target.morale=Math.min(100,target.morale+10);
+  u.stock--;
+  if(s.battleStats?.[u.side])s.battleStats[u.side].healed+=healedHp;
+  awardXp(s,u,6);
+  pushEvent(s,{
+   type:'heal',
+   at:{q:target.q,r:target.r},
+   amount:healedHp,
+   audience:eventAudienceAt(s,target,u.side)
+  });
+ }
+ else if(action==='resupply'){
+  let meaningful=false;
+  if(target.ammo<target.maxAmmo){meaningful=true;target.ammo=Math.min(target.maxAmmo,target.ammo+4);}
+  if(target.fuel<target.maxFuel){meaningful=true;target.fuel=Math.min(target.maxFuel,target.fuel+35);}
+  if(target.role==='armor'&&target.hp<target.maxHp){
+   meaningful=true;
+   const repHp=Math.max(0,Math.min(20,target.maxHp-target.hp));
+   target.hp=Math.min(target.maxHp,target.hp+20);
+   if(s.battleStats?.[u.side])s.battleStats[u.side].healed+=repHp;
+   pushEvent(s,{type:'heal',at:{q:target.q,r:target.r},amount:repHp,audience:eventAudienceAt(s,target,u.side)});
+  }
+  if(['engineer','medic'].includes(target.role)){
+   const maxCap=target.role==='engineer'?3:5;
+   if(target.stock<maxCap){
+    meaningful=true;
+    target.stock=Math.min(maxCap,target.stock+1);
+   }
+  }
+  u.stock--;
+  if(meaningful){
+   if(s.battleStats?.[u.side])s.battleStats[u.side].resupplied++;
+   awardXp(s,u,6);
+  }
+ }
+ else if(action==='clear'){
+  delete s.forts[key(q,r)];
+  awardXp(s,u,6);
+ }else {
+  s.forts[key(q,r)]={q,r,type:action,side:u.side};
+  u.stock--;
+  awardXp(s,u,6);
+ }
  if(u.side==='de'&&s.tutorialProgress)s.tutorialProgress.supported=true;
  u.acted=true;u.mp=0;log(s,u.name+'完成'+({heal:'救护',resupply:'补给',mine:'布雷',trench:'挖壕',clear:'排雷'})[action],p,u.side);invalidate(s);updateSight(s);return {ok:true,message:'行动完成'};
 }
@@ -159,6 +381,7 @@ function checkOutcome(s,{endRound=false}={}){
   return {active,destroyed,captured,routed,lostHp};
  };
  const stats={de:sideStats('de'),su:sideStats('su')};
+ const snapshotBattleStats=s.battleStats?JSON.parse(JSON.stringify(s.battleStats)):blankBattleStats();
  const deCombat=s.units.some(u=>alive(u)&&u.side==='de'&&isCombat(u));
  const suCombat=s.units.some(u=>alive(u)&&u.side==='su'&&isCombat(u));
 
@@ -168,11 +391,11 @@ function checkOutcome(s,{endRound=false}={}){
  if(s.mode==='campaign'){
   if(validMissionState){
    if(!deCombat){
-    s.result={winner:'su',reason:'德军作战部队全军覆没',round:s.round,stats};
+    s.result={winner:'su',reason:'德军作战部队全军覆没',round:s.round,stats,battleStats:snapshotBattleStats};
     return s.result;
    }
    if(!suCombat){
-    s.result={winner:'de',reason:'苏军作战部队全军覆没',round:s.round,stats};
+    s.result={winner:'de',reason:'苏军作战部队全军覆没',round:s.round,stats,battleStats:snapshotBattleStats};
     return s.result;
    }
   }else if(!hasCounts||s.initialCounts.de+s.initialCounts.su!==s.units.length){
@@ -186,21 +409,21 @@ function checkOutcome(s,{endRound=false}={}){
   const suLossRatio=initialSu>0?suCasualties/initialSu:0;
 
   if(minskOwned&&otherTowns>=2&&suLossRatio>=0.35){
-   s.result={winner:'de',reason:'德军攻克明斯克并重创苏军主力，达成早期决定性胜利',round:s.round,stats};
+   s.result={winner:'de',reason:'德军攻克明斯克并重创苏军主力，达成早期决定性胜利',round:s.round,stats,battleStats:snapshotBattleStats};
    return s.result;
   }
   if(endRound&&s.round>=24){
-   s.result={winner:'su',reason:'苏军坚守至第24回合，德军未能在期限内达成既定战略目标',round:24,stats};
+   s.result={winner:'su',reason:'苏军坚守至第24回合，德军未能在期限内达成既定战略目标',round:24,stats,battleStats:snapshotBattleStats};
    return s.result;
   }
  }else if(s.mode==='tutorial'){
   if(validMissionState){
    if(!deCombat){
-    s.result={winner:'su',reason:'德军教学部队全军覆没',round:s.round,stats};
+    s.result={winner:'su',reason:'德军教学部队全军覆没',round:s.round,stats,battleStats:snapshotBattleStats};
     return s.result;
    }
    if(!suCombat){
-    s.result={winner:'de',reason:'苏军教学守备部队全军覆没',round:s.round,stats};
+    s.result={winner:'de',reason:'苏军教学守备部队全军覆没',round:s.round,stats,battleStats:snapshotBattleStats};
     return s.result;
    }
   }else if(!hasCounts||s.initialCounts.de+s.initialCounts.su!==s.units.length){
@@ -208,11 +431,11 @@ function checkOutcome(s,{endRound=false}={}){
   }
   const kobrynOwned=s.cities['kobryn']==='de';
   if(kobrynOwned){
-   s.result={winner:'de',reason:'德军成功攻占科布林要地，完成教学战役目标',round:s.round,stats};
+   s.result={winner:'de',reason:'德军成功攻占科布林要地，完成教学战役目标',round:s.round,stats,battleStats:snapshotBattleStats};
    return s.result;
   }
   if(endRound&&s.round>=12){
-   s.result={winner:'su',reason:'苏军成功坚守科布林至第12回合，教学防御成功',round:12,stats};
+   s.result={winner:'su',reason:'苏军成功坚守科布林至第12回合，教学防御成功',round:12,stats,battleStats:snapshotBattleStats};
    return s.result;
   }
  }
@@ -879,10 +1102,18 @@ function autoSupportUnit(s,u){if(s.result||!alive(u)||u.side!==s.active||u.acted
 function autoSupport(s){if(s.result)return;for(const u of s.units)if(u.autoSupport&&u.side===s.active)autoSupportUnit(s,u);}
 function setAuto(s,id,on){if(s?.result)return false;const u=s.units.find(x=>x.id===id);if(!u||!['medic','supply'].includes(u.role))return false;u.autoSupport=!!on;return true;}
 function airReason(s,side,kind,q,r){if(s.result)return '战役已结束';if(side!==s.active)return '当前不是该阵营回合';if(!['recon','strike'].includes(kind)||!inside(q,r))return '无效航空任务';if(s.missionArea&&(q<s.missionArea.minQ||q>s.missionArea.maxQ||r<s.missionArea.minR||r>s.missionArea.maxR))return '超出作战区域';if(s.air[side][kind]<=0)return '本回合次数已用尽';if(kind==='strike'){if(!vision(s,side).has(key(q,r)))return '先侦察目标区域';const u=occupied(s,{q,r});if(u?.side===side)return '不能攻击友军';}return '';}
-function airMission(s,side,kind,q,r){const reason=airReason(s,side,kind,q,r);if(reason)return {ok:false,message:reason};s.air[side][kind]--;let hit=0;if(kind==='recon'){s.airRecon[side].push({q,r});log(s,'侦察机展开空中侦察',{q,r},side);}else{const u=occupied(s,{q,r});if(u&&u.side!==side){hit=u.role==='armor'?30:42;u.hp=Math.max(0,u.hp-hit);u.morale=Math.max(0,u.morale-18);if(u.project)pauseBridge(s,u,'空袭');log(s,'航空支援命中'+u.name+'，损失'+hit,u,side);if(u.hp===0)remove(s,u,'destroyed');}else log(s,'航空支援完成对地攻击',{q,r},side);const b=s.bridges[key(q,r)];if(b&&b.side!==side&&b.progress<3){b.paused=true;log(s,'空袭打断敌军架桥',b,side);}}
+function airMission(s,side,kind,q,r){const reason=airReason(s,side,kind,q,r);if(reason)return {ok:false,message:reason};s.air[side][kind]--;let hit=0;if(kind==='recon'){s.airRecon[side].push({q,r});log(s,'侦察机展开空中侦察',{q,r},side);}else{const u=occupied(s,{q,r});if(u&&u.side!==side){hit=Math.min(u.hp,u.role==='armor'?30:42);const actualDamage=Math.min(u.hp,hit);if(s.battleStats?.[side])s.battleStats[side].damage+=actualDamage;u.hp=Math.max(0,u.hp-hit);u.morale=Math.max(0,u.morale-18);if(u.project)pauseBridge(s,u,'空袭');log(s,'航空支援命中'+u.name+'，损失'+hit,u,side);
+ pushEvent(s,{
+  type:'hit',
+  at:{q:u.q,r:u.r},
+  amount:actualDamage,
+  role:'air',
+  audience:eventAudienceAt(s,u,u.side)
+ });
+ if(u.hp===0)remove(s,u,'destroyed',{side});}else log(s,'航空支援完成对地攻击',{q,r},side);const b=s.bridges[key(q,r)];if(b&&b.side!==side&&b.progress<3){b.paused=true;log(s,'空袭打断敌军架桥',b,side);}}
  invalidate(s);updateSight(s);return {ok:true,message:kind==='recon'?'侦察完成，本轮持续揭示半径4格':'空袭完成'+(hit?' · 损失'+hit:''),kind,q,r,hit};}
 
-function serialize(s){return JSON.stringify({...s,_vision:undefined,_supply:undefined,explored:{de:[...s.explored.de],su:[...s.explored.su]}});}
+function serialize(s){return JSON.stringify({...s,_vision:undefined,_supply:undefined,_events:undefined,explored:{de:[...s.explored.de],su:[...s.explored.su]}});}
 function restore(raw){try{
  const s=JSON.parse(raw);
  if(![2,3].includes(s.version)||!['de','su'].includes(s.active)||!Number.isInteger(s.round)||s.round<1||!Array.isArray(s.units))return null;
@@ -911,6 +1142,18 @@ function restore(raw){try{
  s.bridges=s.bridges||{};
  s.air=s.air||airBudget();
  s.airRecon=s.airRecon||{de:[],su:[]};
+ s.battleId=typeof s.battleId==='string'&&s.battleId?s.battleId:genBattleId();
+ if(!s.battleStats||typeof s.battleStats!=='object'){
+  s.battleStats=blankBattleStats();
+ }else{
+  for(const side of ['de','su']){
+   if(!s.battleStats[side]||typeof s.battleStats[side]!=='object')s.battleStats[side]=blankSideBattleStats();
+   for(const field of ['damage','healed','resupplied','captures','kills']){
+    s.battleStats[side][field]=Number.isFinite(s.battleStats[side][field])?Math.max(0,Math.floor(s.battleStats[side][field])):0;
+   }
+  }
+ }
+ s._events=[];
  const ids=new Set(),cells=new Set();
  for(const u of s.units){
   if(!D.units.some(v=>v.id===u.id)||ids.has(u.id)||!profiles[u.role]||!['de','su'].includes(u.side)||!Number.isInteger(u.q)||!Number.isInteger(u.r)||!inside(u.q,u.r)||!['active','captured','routed','destroyed'].includes(u.status))return null;
@@ -920,6 +1163,8 @@ function restore(raw){try{
   u.autoSupport=u.autoSupport??(u.role==='medic');
   u.project=u.project||null;
   u.waiting=u.waiting||false;
+  u.xp=Number.isFinite(u.xp)?Math.max(0,Math.min(200,Math.floor(u.xp))):0;
+  u.kills=Number.isFinite(u.kills)?Math.max(0,Math.floor(u.kills)):0;
   for(const n of ['hp','maxHp','morale','ammo','fuel','stock','mp','attack','defense','maxMove'])if(!Number.isFinite(u[n])||u[n]<0)return null;
   if(s.balanceVersion!==1&&u.role==='armor'&&u.side==='su'&&!isTutorial)u.attack=unitAttack(D.units.find(v=>v.id===u.id));
   if(alive(u)){
@@ -942,6 +1187,6 @@ function restore(raw){try{
  updateSight(s);
  return s;
 }catch{return null;}}
-const api={advance,advanceReason,declineAdvance,unitArt,AIR_LIMITS,airReason,airMission,setAuto,autoSupport,autoSupportUnit,safeSupportTile,bridgeReason,workBridge,pauseBridge,progressBridges,newGame,terrain,terrainName,urban,urbanNames,profiles,role,isFoot,alive,isCombat,key,inside,neighbors,distance,ring,occupied,vision,updateSight,canSee,fortVisible,moveCost,reachable,move,attackReason,damage,attack,abilityReason,ability,supplyMap,connected,endTurn,aiStep,aiAirStep,serialize,restore,invalidate,lineClear,waitUnit,checkOutcome,objectiveStatus,tutorialHints};
+const api={advance,advanceReason,declineAdvance,unitArt,AIR_LIMITS,airReason,airMission,setAuto,autoSupport,autoSupportUnit,safeSupportTile,bridgeReason,workBridge,pauseBridge,progressBridges,newGame,terrain,terrainName,urban,urbanNames,profiles,role,isFoot,alive,isCombat,key,inside,neighbors,distance,ring,occupied,vision,updateSight,canSee,fortVisible,moveCost,reachable,move,attackReason,damage,attack,abilityReason,ability,supplyMap,connected,endTurn,aiStep,aiAirStep,serialize,restore,invalidate,lineClear,waitUnit,checkOutcome,objectiveStatus,tutorialHints,veteran,ensureProgress,drainEvents};
 if(typeof module!=='undefined')module.exports=api;root.BARB_ENGINE=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

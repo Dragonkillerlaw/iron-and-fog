@@ -1,7 +1,17 @@
-(()=>{'use strict';const D=window.BARBAROSSA,E=window.BARB_ENGINE,$=id=>document.getElementById(id);
+(()=>{'use strict';const D=window.BARBAROSSA,E=window.BARB_ENGINE,P=window.BARB_PROGRESS,FX=window.BARB_EFFECTS,$=id=>document.getElementById(id);
 const MODE_KEY='iron-fog-mode';
 let currentMode='campaign';try{currentMode=localStorage.getItem(MODE_KEY)||'campaign';}catch{}
 if(currentMode!=='tutorial'&&currentMode!=='campaign')currentMode='campaign';
+
+let settings=P?P.getSettings():{sound:false,anim:'normal'};
+applySettingsToDom();
+
+function applySettingsToDom(){
+ document.body.classList.toggle('anim-off',settings.anim==='off');
+ document.body.classList.toggle('anim-fast',settings.anim==='fast');
+ if($('soundToggle'))$('soundToggle').checked=settings.sound;
+ if($('animSelect'))$('animSelect').value=settings.anim;
+}
 
 function saveKey(m=currentMode){return m==='tutorial'?'iron-fog-tutorial':'barbarossa-v2';}
 function loadSave(m=currentMode){
@@ -9,10 +19,17 @@ function loadSave(m=currentMode){
   const raw=localStorage.getItem(saveKey(m));
   if(raw){
    const parsed=E.restore(raw);
-   if(parsed&&parsed.mode===m)return parsed;
+   if(parsed&&parsed.mode===m){
+    const sWithProgress=E.ensureProgress(parsed);
+    // If battleId was missing in raw save, persist upgraded save immediately to prevent duplicate archives on refresh
+    if(!parsed.battleId||raw.indexOf(sWithProgress.battleId)===-1){
+     try{localStorage.setItem(saveKey(m),E.serialize(sWithProgress));}catch{}
+    }
+    return sWithProgress;
+   }
   }
  }catch{}
- return E.newGame(m);
+ return E.ensureProgress(E.newGame(m));
 }
 
 let S=loadSave(currentMode);
@@ -49,7 +66,7 @@ function buildMap(){
  const forest=D.geo(24.05,52.70),marsh=D.geo(26.3,51.65);places+=`<text class="terrain-text" x="${forest.x}" y="${forest.y}">比亚沃维耶扎林区</text><text class="terrain-text" x="${marsh.x}" y="${marsh.y}" font-size="27">普里皮亚季沼泽 · 南部屏障</text>`;
  let formations='';for(const g of D.groups){const p=D.geo(g.lon,g.lat+.43);formations+=`<text class="formation-label" x="${p.x}" y="${p.y}" fill="${color(g.side)}">${g.short}</text>`;}
  const axes=D.plans.map(p=>`<polyline points="${pts(p.points)}" fill="none" stroke="#886741" stroke-width="10" stroke-dasharray="22 18" opacity=".72" stroke-linejoin="round" marker-end="url(#axis-arrow)"/>`).join('');
- $('map').innerHTML=`<defs><marker id="axis-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5 0 10 2 5Z" fill="#886741"/></marker><pattern id="paper" width="180" height="180" patternUnits="userSpaceOnUse"><path d="M1 10h30m120 60h20m-100 80h18" stroke="#ffffff" opacity=".10"/></pattern></defs><rect width="4960" height="3630" fill="#ddd9b8"/><g id="cells">${cells}</g><g pointer-events="none">${decor}${roads}</g><g id="border" pointer-events="none"><polyline points="${pts(D.border)}" fill="none" stroke="#ab7565" stroke-width="5" stroke-dasharray="16 12"/></g><g id="axes" pointer-events="none">${axes}</g><g id="places">${places}</g><g id="formations" pointer-events="none">${formations}</g><g id="forts"></g><g id="overlays" pointer-events="none"></g><g id="moves" pointer-events="none"></g><g id="fog" pointer-events="none"></g><g id="units"></g><g id="targetOverlay" pointer-events="none"></g><g id="fx" pointer-events="none"></g>`;
+ $('map').innerHTML=`<defs><marker id="axis-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5 0 10 2 5Z" fill="#886741"/></marker><pattern id="paper" width="180" height="180" patternUnits="userSpaceOnUse"><path d="M1 10h30m120 60h20m-100 80h18" stroke="#ffffff" opacity=".10"/></pattern></defs><rect width="4960" height="3630" fill="#ddd9b8"/><g id="cells">${cells}</g><g pointer-events="none">${decor}${roads}</g><g id="border" pointer-events="none"><polyline points="${pts(D.border)}" fill="none" stroke="#ab7565" stroke-width="5" stroke-dasharray="16 12"/></g><g id="axes" pointer-events="none">${axes}</g><g id="places">${places}</g><g id="formations" pointer-events="none">${formations}</g><g id="forts"></g><g id="overlays" pointer-events="none"></g><g id="moves" pointer-events="none"></g><g id="fog" pointer-events="none"></g><g id="units"></g><g id="targetOverlay" pointer-events="none"></g><g id="fxOverlay" pointer-events="none"></g><g id="airOverlay" pointer-events="none"></g><g id="fx" pointer-events="none"></g>`;
  $('legend').innerHTML=Object.entries(D.palette).map(([t,c])=>`<span><i style="background:${c}"></i>${D.terrainNames[t]}</span>`).join('')+'<span><i style="background:#cbbb9c"></i>城市街区</span><span>⚒ 堑壕 · ✹ 雷区</span><span><i class="line-key"></i>公路 / 轨道线为铁路</span><span><i class="border-key"></i>开战边界</span>';
  let mini=cells.replaceAll('class="cell"','').replace(/ data-q="\d+" data-r="\d+"/g,'');mini+=`<polyline points="${pts(D.border)}" fill="none" stroke="#ab7565" stroke-width="10"/>`;for(const t of D.towns){const p=D.position(t.q,t.r);mini+=`<circle cx="${p.x}" cy="${p.y}" r="17" fill="#6c7257"/>`;}
  $('minimap').innerHTML=mini+'<g id="miniFog"></g><g id="miniUnits"></g><rect id="miniView" fill="#ffffff10" stroke="#fff8dc" stroke-width="18" pointer-events="none"/>';
@@ -177,7 +194,10 @@ function renderUnits(){
  let html='',mini='';
  for(const u of S.units.filter(visible)){
   const p=D.position(u.q,u.r),c=color(u.side),chosen=u.id===selected,symbol=E.profiles[u.role].symbol;
-  html+=`<g class="unit ${u.acted?'spent':''}" data-unit="${u.id}" transform="translate(${p.x} ${p.y})" role="button" tabindex="0" aria-label="${esc((u.side==='de'?'德军 ':'苏军 ')+u.name+'，'+coord(u))}"><title>${esc(u.name+' · '+E.profiles[u.role].name+' · 兵力'+u.hp+' · 士气'+u.morale)}</title>${chosen?'<ellipse class="selected-ring" cy="5" rx="39" ry="28"/>':''}<ellipse class="unit-base" cy="13" rx="30" ry="13" fill="${c}" stroke="#e8dfbf" stroke-width="2"/>${artOn&&u.asset?'<g class="unit-art">'+sprite(u.asset,-41,-55,82,70)+'</g>':specialIcon(u)}<rect x="-31" y="9" width="21" height="18" rx="2" fill="${c}" stroke="#e8dfbf"/><text x="-20.5" y="22" font-size="12" fill="#fff6dc" text-anchor="middle">${symbol}</text><path d="M-27 31h54" stroke="#544d3e" stroke-width="5"/><path d="M-27 31h${54*u.hp/u.maxHp}" stroke="${u.morale<25?'#c46a4c':'#c4d29b'}" stroke-width="5"/>${chosen?`<text class="unit-label" y="50">${esc(shortName(u))}</text>`:''}</g>`;
+  const vet=E.veteran(u);
+  const badgeText=vet.level>0?('★'.repeat(vet.level)):null;
+  const badgeSvg=badgeText?`<text class="unit-badge" x="18" y="24">${badgeText}</text>`:'';
+  html+=`<g class="unit ${u.acted?'spent':''}" data-unit="${u.id}" transform="translate(${p.x} ${p.y})" role="button" tabindex="0" aria-label="${esc((u.side==='de'?'德军 ':'苏军 ')+u.name+'，'+coord(u))}"><title>${esc(u.name+' · '+E.profiles[u.role].name+' · '+vet.name+' · 兵力'+u.hp+' · 士气'+u.morale)}</title>${chosen?'<ellipse class="selected-ring" cy="5" rx="39" ry="28"/>':''}<ellipse class="unit-base" cy="13" rx="30" ry="13" fill="${c}" stroke="#e8dfbf" stroke-width="2"/>${artOn&&u.asset?'<g class="unit-art">'+sprite(u.asset,-41,-55,82,70)+'</g>':specialIcon(u)}<rect x="-31" y="9" width="21" height="18" rx="2" fill="${c}" stroke="#e8dfbf"/><text x="-20.5" y="22" font-size="12" fill="#fff6dc" text-anchor="middle">${symbol}</text>${badgeSvg}<path d="M-27 31h54" stroke="#544d3e" stroke-width="5"/><path d="M-27 31h${54*u.hp/u.maxHp}" stroke="${u.morale<25?'#c46a4c':'#c4d29b'}" stroke-width="5"/>${chosen?`<text class="unit-label" y="50">${esc(shortName(u))}</text>`:''}</g>`;
   mini+=`<circle cx="${p.x}" cy="${p.y}" r="${chosen?35:23}" fill="${c}" ${chosen?'stroke="#f7ce6d" stroke-width="12"':''}/>`;
  }
  $('units').innerHTML=html;$('miniUnits').innerHTML=mini;
@@ -204,6 +224,7 @@ function renderUnits(){
  $('losses').textContent='己方退场 '+ownLoss.length+' · 被俘 '+ownLoss.filter(u=>u.status==='captured').length;
  updateUndoButton();
  renderObjectives();
+ renderBattleStatsPanel();
  renderTurnReport();
  checkAndShowOutcomeDialog();
 }
@@ -350,6 +371,12 @@ function renderDetail(){
  const g=group(u),p=E.profiles[u.role],own=controllable(u);
  const isConn=E.connected(S,u);
  const supply=perspective==='god'||u.side===perspective?(isConn?'畅通':'已切断'):'未知';
+ const vet=E.veteran(u);
+ const bonusPct=Math.round(vet.bonus*100);
+ const nextXpText=vet.next!==null?`距下一级还需 ${vet.next-vet.xp} XP`:'已达最高等级';
+ const prevThreshold=[0,0,40,100][vet.level];
+ const currentNextDiff=vet.next!==null?(vet.next-prevThreshold):1;
+ const currentXpProgress=vet.next!==null?Math.max(0,Math.min(100,Math.round(((vet.xp-prevThreshold)/currentNextDiff)*100))):100;
 
  let warningHtml='';
  if(own&&!isConn){
@@ -359,7 +386,18 @@ function renderDetail(){
   warningHtml=`<div class="supply-warning">⚠️ 补给线已断！回合末士气 −${penalty}${captureRisk}</div>`;
  }
 
- $('detail').innerHTML=`<div class="detail-art">${u.asset?'<svg viewBox="0 0 280 150">'+sprite(u.asset,0,0,280,145)+'</svg>':'<span class="hq-symbol">'+p.symbol+'</span>'}</div><div class="detail-kicker"><span class="side-tag ${u.side}">${u.side==='de'?'德军':'苏军'} · ${p.name}</span><span>${coord(u)} · ${u.acted?(u.waiting?'待命':'已行动'):'未行动'}</span></div><h3>${esc(u.name)}</h3><div class="unit-stats"><span>兵力<b>${u.hp} / ${u.maxHp}</b></span><span>士气<b class="${u.morale<30?'danger':''}">${u.morale}</b></span><span>攻击 / 防御<b>${u.attack} / ${u.defense}</b></span><span>移动 / 射程<b>${u.mp} / ${p.range}</b></span><span>弹药<b>${u.ammo} / ${u.maxAmmo}</b></span><span>${u.role==='armor'?'燃油':'物资'}<b>${u.role==='armor'?u.fuel:u.stock}</b></span></div><p class="role-tip">${p.tip}</p>${warningHtml}<dl><dt>所属</dt><dd>${esc(g.name)}</dd><dt>指挥</dt><dd>${esc(g.commander)}</dd><dt>地形</dt><dd>${E.terrainName(u.q,u.r)}</dd><dt>补给线</dt><dd>${supply}${u.isolated&&supply!=='未知'?' · '+u.isolated+'回合':''}</dd></dl><div class="detail-actions"><button id="focusSelected">定位</button><button id="showFormation">所属编队</button>${own&&!u.acted?'<button id="waitUnitBtn">原地待命</button>':''}</div>${own?'<div class="abilities">'+(u.role==='medic'?'<button data-action="heal">✚ 救护友军</button>':u.role==='supply'?'<button data-action="resupply">▣ 补给 / 维修</button>':u.role==='engineer'?'<button data-action="trench">⚒ 修筑堑壕</button><button data-action="mine">✹ 布设雷区</button><button data-action="clear">⌁ 排雷</button><button data-action="bridge">▤ 架桥 / 恢复施工</button>':'')+'</div>':''}`;
+ const veteranHtml=`<div class="veteran-bar">
+  <div style="display:flex;justify-content:space-between;font-size:10px;">
+   <strong>${vet.name}（经验 ${vet.xp}/200 · 战功 ${u.kills||0} 击毁）</strong>
+   <span style="color:#8a6e38;">攻防加成 +${bonusPct}%</span>
+  </div>
+  <div class="veteran-bar-track" title="经验进度: ${vet.xp} / ${vet.next||200}">
+   <div class="veteran-bar-fill" style="width:${currentXpProgress}%"></div>
+  </div>
+  <div style="font-size:9px;color:var(--muted);margin-top:2px;">${nextXpText}</div>
+ </div>`;
+
+ $('detail').innerHTML=`<div class="detail-art">${u.asset?'<svg viewBox="0 0 280 150">'+sprite(u.asset,0,0,280,145)+'</svg>':'<span class="hq-symbol">'+p.symbol+'</span>'}</div><div class="detail-kicker"><span class="side-tag ${u.side}">${u.side==='de'?'德军':'苏军'} · ${p.name} · ${vet.name}</span><span>${coord(u)} · ${u.acted?(u.waiting?'待命':'已行动'):'未行动'}</span></div><h3>${esc(u.name)}</h3>${veteranHtml}<div class="unit-stats"><span>兵力<b>${u.hp} / ${u.maxHp}</b></span><span>士气<b class="${u.morale<30?'danger':''}">${u.morale}</b></span><span>攻击 / 防御<b>${u.attack} <small style="font-size:11px;font-weight:normal;color:#8a6e38;">(+${bonusPct}%)</small> / ${u.defense} <small style="font-size:11px;font-weight:normal;color:#8a6e38;">(+${bonusPct}%)</small></b></span><span>移动 / 射程<b>${u.mp} / ${p.range}</b></span><span>弹药<b>${u.ammo} / ${u.maxAmmo}</b></span><span>${u.role==='armor'?'燃油':'物资'}<b>${u.role==='armor'?u.fuel:u.stock}</b></span></div><p class="role-tip">${p.tip}</p>${warningHtml}<dl><dt>所属</dt><dd>${esc(g.name)}</dd><dt>指挥</dt><dd>${esc(g.commander)}</dd><dt>地形</dt><dd>${E.terrainName(u.q,u.r)}</dd><dt>补给线</dt><dd>${supply}${u.isolated&&supply!=='未知'?' · '+u.isolated+'回合':''}</dd></dl><div class="detail-actions"><button id="focusSelected">定位</button><button id="showFormation">所属编队</button>${own&&!u.acted?'<button id="waitUnitBtn">原地待命</button>':''}</div>${own?'<div class="abilities">'+(u.role==='medic'?'<button data-action="heal">✚ 救护友军</button>':u.role==='supply'?'<button data-action="resupply">▣ 补给 / 维修</button>':u.role==='engineer'?'<button data-action="trench">⚒ 修筑堑壕</button><button data-action="mine">✹ 布设雷区</button><button data-action="clear">⌁ 排雷</button><button data-action="bridge">▤ 架桥 / 恢复施工</button>':'')+'</div>':''}`;
 
  $('focusSelected').onclick=()=>focusUnit(u);
  $('showFormation').onclick=()=>{
@@ -411,6 +449,153 @@ function cancelAction(){
  $('actionHint').textContent=perspective==='god'?'上帝视角：双方轮流操作，全部可见。':'指挥'+(perspective==='de'?'德军':'苏军')+'：己方视野外的敌军隐藏，结束回合后敌军自动行动。';
 }
 
+function processEngineEvents(events, {isAi=false}={}){
+ if(!Array.isArray(events)||!events.length)return;
+ const fxGroup=$('fxOverlay')||$('fx');
+ const mapWrap=$('mapWrap');
+ const mapSvg=$('map');
+ const currentPersp=perspective;
+ const canHear=settings.sound;
+ const animMode=settings.anim;
+ const isOff=animMode==='off';
+ const isFast=animMode==='fast';
+ const maxDuration=isAi?(isFast?120:200):(isFast?180:350);
+
+ for(const ev of events){
+  // 1. Filter by event audience BEFORE any sound/banner/FX
+  const aud=ev.audience||[];
+  const inAudience=currentPersp==='god'||aud.includes(currentPersp);
+  if(!inAudience){
+   continue;
+  }
+
+  // 2. City ownership banner: naming city/new owner, own city-loss notices allowed even if lost vision
+  if(ev.type==='city'){
+   if(FX)FX.playCue('city',canHear);
+   const ownerName=ev.side==='de'?'德军':'苏军';
+   const bannerText=`【据点变动】${ownerName} 占领了 ${ev.name}`;
+   if(FX)FX.renderBannerNotice(mapWrap,bannerText,'notice-city',isFast?1400:2200);
+   continue;
+  }
+
+  // Defeated event for own units allowed even if lost vision at the moment
+  const isOwnDefeated=ev.type==='defeated'&&(currentPersp==='god'||ev.side===currentPersp);
+
+  // Check destination visibility to current viewer vision too (except city events and own defeated events)
+  const atPos=ev.at||ev.to;
+  if(atPos&&currentPersp!=='god'&&!isOwnDefeated){
+   const k=E.key(atPos.q,atPos.r);
+   if(!E.vision(S,currentPersp).has(k)){
+    continue; // unseen destination
+   }
+  }
+
+  // 3. Movement trail / pulse
+  if(ev.type==='move'){
+   if(FX)FX.playCue('move',canHear);
+   if(!isOff&&ev.from&&ev.to){
+    const p1=D.position(ev.from.q,ev.from.r);
+    const p2=D.position(ev.to.q,ev.to.r);
+    const durSec=(maxDuration/1000).toFixed(2);
+    const trailSvg=`<g>
+     <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#cfb677" stroke-width="6" stroke-dasharray="10 8" opacity="0.8"/>
+     <circle cx="${p2.x}" cy="${p2.y}" r="32" fill="none" stroke="#e8d197" stroke-width="4">
+      <animate attributeName="r" from="10" to="40" dur="${durSec}s" fill="freeze"/>
+      <animate attributeName="opacity" from="1" to="0" dur="${durSec}s" fill="freeze"/>
+     </circle>
+    </g>`;
+    if(FX)FX.addTransientOverlay(fxGroup,trailSvg,maxDuration);
+   }
+   continue;
+  }
+
+  // 4. Hit / Damage
+  if(ev.type==='hit'){
+   const hasSourceVisibility=!!ev.source&&(currentPersp==='god'||(ev.sourceAudience&&ev.sourceAudience.includes(currentPersp)));
+   const displayRole=hasSourceVisibility?ev.role:'impact';
+   let cueType='impact';
+   if(hasSourceVisibility){
+    const role=ev.role;
+    cueType=(role==='mg'?'mg':['artillery','mortar','howitzer','armor','at'].includes(role)?'heavy':'heavy');
+   }
+   if(FX)FX.playCue(cueType,canHear);
+   
+   if(atPos&&mapSvg){
+    const sc=FX?FX.screenCoordsForHex(mapSvg,atPos.q,atPos.r):{x:100,y:100,svgX:0,svgY:0};
+    if(ev.amount>0&&FX){
+     FX.showFloatingNotice(mapWrap,sc.x,sc.y,`-${ev.amount}`,'notice-dmg',isOff?1200:(isFast?550:800));
+    }
+    if(!isOff){
+     // Tracer ONLY if sourceAudience includes current perspective
+     let tracerSvg='';
+     if(ev.source&&hasSourceVisibility){
+      const sPos=D.position(ev.source.q,ev.source.r);
+      const isMg=ev.role==='mg';
+      tracerSvg=`<line x1="${sPos.x}" y1="${sPos.y}" x2="${sc.svgX}" y2="${sc.svgY}" stroke="${isMg?'#ffe37a':'#ff6e3d'}" stroke-width="${isMg?3:6}" stroke-dasharray="${isMg?'8 6':'none'}"><animate attributeName="opacity" from="1" to="0" dur="${(maxDuration/1000).toFixed(2)}s"/></line>`;
+     }
+     const hitAnimSvg=`<g>
+      ${tracerSvg}
+      <circle cx="${sc.svgX}" cy="${sc.svgY}" r="38" fill="${displayRole==='mg'?'#ffda6b55':'#f46b4055'}" stroke="${displayRole==='mg'?'#f5be38':'#d64124'}" stroke-width="5">
+       <animate attributeName="r" from="15" to="52" dur="${(maxDuration/1000).toFixed(2)}s"/>
+       <animate attributeName="opacity" from="1" to="0" dur="${(maxDuration/1000).toFixed(2)}s"/>
+      </circle>
+     </g>`;
+     if(FX)FX.addTransientOverlay(fxGroup,hitAnimSvg,maxDuration);
+    }
+   }
+   continue;
+  }
+
+  // 5. Heal / Resupply
+  if(ev.type==='heal'){
+   if(FX)FX.playCue('heal',canHear);
+   if(atPos&&mapSvg){
+    const sc=FX?FX.screenCoordsForHex(mapSvg,atPos.q,atPos.r):{x:100,y:100,svgX:0,svgY:0};
+    if(ev.amount>0&&FX){
+     FX.showFloatingNotice(mapWrap,sc.x,sc.y,`+${ev.amount}`,'notice-heal',isOff?1200:(isFast?550:800));
+    }
+    if(!isOff&&FX){
+     const healSvg=`<circle cx="${sc.svgX}" cy="${sc.svgY}" r="35" fill="none" stroke="#68b87a" stroke-width="5"><animate attributeName="r" from="15" to="48" dur="${(maxDuration/1000).toFixed(2)}s"/><animate attributeName="opacity" from="1" to="0" dur="${(maxDuration/1000).toFixed(2)}s"/></circle>`;
+     FX.addTransientOverlay(fxGroup,healSvg,maxDuration);
+    }
+   }
+   continue;
+  }
+
+  // 6. Defeated / Captured / Routed
+  if(ev.type==='defeated'){
+   if(FX)FX.playCue('defeated',canHear);
+   if(atPos&&mapSvg){
+    const sc=FX?FX.screenCoordsForHex(mapSvg,atPos.q,atPos.r):{x:100,y:100};
+    const label=ev.status==='captured'?'被俘':ev.status==='routed'?'溃散':'覆灭';
+    if(FX)FX.showFloatingNotice(mapWrap,sc.x,sc.y,label,'notice-defeat',isFast?900:1400);
+   }
+   continue;
+  }
+
+  // 7. Bridge completion / progress
+  if(ev.type==='bridge'){
+   if(FX)FX.playCue('bridge',canHear);
+   if(atPos&&mapSvg){
+    const sc=FX?FX.screenCoordsForHex(mapSvg,atPos.q,atPos.r):{x:100,y:100};
+    const bText=ev.progress===3?'重桥完工':ev.progress===2?'轻桥接通':`架桥 ${ev.progress}/3`;
+    if(FX)FX.showFloatingNotice(mapWrap,sc.x,sc.y,bText,'notice-bridge',isFast?900:1300);
+   }
+   continue;
+  }
+
+  // 8. Promotion
+  if(ev.type==='promotion'){
+   if(FX)FX.playCue('promotion',canHear);
+   if(atPos&&mapSvg){
+    const sc=FX?FX.screenCoordsForHex(mapSvg,atPos.q,atPos.r):{x:100,y:100};
+    if(FX)FX.showFloatingNotice(mapWrap,sc.x,sc.y,`晋升 · ${ev.rank}`,'notice-promo',isFast?900:1400);
+   }
+   continue;
+  }
+ }
+}
+
 function showTerrain(q,r){
  selected=null;cancelAction();
  const bridge=S.bridges[E.key(q,r)];
@@ -436,6 +621,8 @@ function refresh(){
 }
 
 function perform(result){
+ const evs=E.drainEvents(S);
+ if(evs.length)processEngineEvents(evs,{isAi:false});
  if(result.ok){save();refresh();}
  $('actionHint').textContent=result.message;
 }
@@ -458,6 +645,8 @@ function updateUndoButton(){
 
 function performUndo(){
  if(!undoSnapshot||busy||isGameFinished())return;
+ if(FX)FX.clearAll();
+ if(S)E.drainEvents(S);
  const restored=E.restore(undoSnapshot);
  if(restored){
   S=restored;
@@ -515,6 +704,8 @@ function handleMove(currentUnit, p){
  const snapshotBefore=E.serialize(S);
  const beforeState=E.restore(snapshotBefore);
  const result=E.move(S,currentUnit.id,p.q,p.r);
+ const evs=E.drainEvents(S);
+ if(evs.length)processEngineEvents(evs,{isAi:false});
  if(result.ok){
   const safety=isSafeMove(beforeState, S, currentUnit.id);
   if(safety.safe){
@@ -608,6 +799,8 @@ async function executeNextTurn(){
  try{
   if(perspective==='god'||S.active===perspective){
    const turnRes=E.endTurn(S);
+   const endEvs=E.drainEvents(S);
+   if(endEvs.length)processEngineEvents(endEvs,{isAi:false});
    if(S.lastTurnReport){
     humanTurnReport=S.lastTurnReport;
     S.turnReports=S.turnReports||{};S.turnReports[humanTurnReport.side]=humanTurnReport;
@@ -621,17 +814,32 @@ async function executeNextTurn(){
    $('actionHint').textContent='敌军行动中…';
    if(E.aiAirStep)for(let i=0;i<4&&!S.result;i++){
     const air=E.aiAirStep(S);if(!air?.ok)break;
+    const airEvs=E.drainEvents(S);
+    if(airEvs.length)processEngineEvents(airEvs,{isAi:true});
     E.checkOutcome(S);
     if(E.vision(S,perspective).has(E.key(air.q,air.r)))await animateFlight(air.kind,air);
    }
    const ids=S.units.filter(u=>E.alive(u)&&inMissionArea(u)&&u.side===S.active).map(u=>u.id);
+   let batchEvs=[];
    for(let i=0;i<ids.length;i++){
     if(E.checkOutcome(S))break;
     E.aiStep(S,ids[i]);
-    if(i%8===0)await new Promise(resolve=>setTimeout(resolve,0));
+    const stepEvs=E.drainEvents(S);
+    if(stepEvs.length)batchEvs.push(...stepEvs);
+    if(i%8===7||i===ids.length-1){
+     if(batchEvs.length){
+      renderFog();renderUnits();
+      processEngineEvents(batchEvs,{isAi:true});
+      batchEvs=[];
+     }
+     await new Promise(resolve=>setTimeout(resolve,0));
+    }
    }
+   if(batchEvs.length){renderFog();renderUnits();processEngineEvents(batchEvs,{isAi:true});}
    if(!E.checkOutcome(S)){
     E.endTurn(S);
+    const aiEndEvs=E.drainEvents(S);
+    if(aiEndEvs.length)processEngineEvents(aiEndEvs,{isAi:true});
     if(S.lastTurnReport){S.turnReports=S.turnReports||{};S.turnReports[S.lastTurnReport.side]=S.lastTurnReport;}
    }
   }
@@ -705,10 +913,14 @@ function prepareAir(p){
  panel((kind==='recon'?'空中侦察':'战斗支援')+' · '+coord(p),kind==='recon'?'揭示半径4格，持续至己方下回合；消耗1次侦察':(target?'目标：'+target.name+' · 预计损失'+Math.min(target.hp,target.role==='armor'?30:42):'对该格实施空袭')+'；消耗1次战斗支援');
 }
 function animateFlight(kind,p){
+ if(settings.anim==='off')return Promise.resolve();
+ const isFast=settings.anim==='fast';
+ const dur=isFast?500:1000;
  return new Promise(resolve=>{
+  const overlay=$('airOverlay')||$('fx');
   const xy=D.position(p.q,p.r),planeSize=Math.min(600,Math.max(220,view.w*.14));
-  $('fx').innerHTML='<g><circle cx="'+xy.x+'" cy="'+xy.y+'" r="'+(kind==='recon'?80:36)+'" fill="none" stroke="'+(kind==='recon'?'#eed17a':'#ef8448')+'" stroke-width="8"><animate attributeName="r" from="15" to="'+(kind==='recon'?180:85)+'" dur="1.1s"/><animate attributeName="opacity" from="1" to="0" dur="1.1s"/></circle><g class="aircraft-pass"><animateTransform attributeName="transform" type="translate" from="'+(xy.x-440)+' '+(xy.y-330)+'" to="'+(xy.x+440)+' '+(xy.y+330)+'" dur="1.1s" fill="freeze"/>'+sprite(kind==='recon'?'airRecon':'airStrike',-planeSize/2,-planeSize*.4,planeSize,planeSize*.8)+'</g></g>';
-  setTimeout(()=>{$('fx').innerHTML='';resolve();},1150);
+  overlay.innerHTML='<g><circle cx="'+xy.x+'" cy="'+xy.y+'" r="'+(kind==='recon'?80:36)+'" fill="none" stroke="'+(kind==='recon'?'#eed17a':'#ef8448')+'" stroke-width="8"><animate attributeName="r" from="15" to="'+(kind==='recon'?180:85)+'" dur="'+(dur/1000)+'s"/><animate attributeName="opacity" from="1" to="0" dur="'+(dur/1000)+'s"/></circle><g class="aircraft-pass"><animateTransform attributeName="transform" type="translate" from="'+(xy.x-440)+' '+(xy.y-330)+'" to="'+(xy.x+440)+' '+(xy.y+330)+'" dur="'+(dur/1000)+'s" fill="freeze"/>'+sprite(kind==='recon'?'airRecon':'airStrike',-planeSize/2,-planeSize*.4,planeSize,planeSize*.8)+'</g></g>';
+  setTimeout(()=>{overlay.innerHTML='';resolve();},dur+50);
  });
 }
 async function confirmAttack(){
@@ -724,9 +936,6 @@ async function confirmAttack(){
   const result=E.attack(S,target.attacker,target.target);
   perform(result);
   if(result.ok){
-   const enemy=S.units.find(u=>u.id===target.target),p=D.position(enemy.q,enemy.r);
-   $('fx').innerHTML='<circle cx="'+p.x+'" cy="'+p.y+'" r="40" fill="#f49a5055" stroke="#e66d3f" stroke-width="6"><animate attributeName="r" from="15" to="65" dur=".6s"/><animate attributeName="opacity" from="1" to="0" dur=".6s"/></circle>';
-   setTimeout(()=>{if(!busy)$('fx').innerHTML='';},650);
    const attacker=S.units.find(u=>u.id===target.attacker);
    if(attacker.advance&&!E.advanceReason(S,attacker))prepareAdvance(attacker);
   }
@@ -734,17 +943,21 @@ async function confirmAttack(){
  }
  const result=E.airMission(S,target.side,target.kind,target.q,target.r);
  if(!result.ok){perform(result);return;}
+ const airEvents=E.drainEvents(S);
  busy=true;save();refresh();$('actionHint').textContent='航空支援执行中…';
- try{await animateFlight(target.kind,target);}finally{busy=false;refresh();$('actionHint').textContent=result.message;}
+ try{await animateFlight(target.kind,target);processEngineEvents(airEvents);}finally{busy=false;refresh();$('actionHint').textContent=result.message;}
 }
 
 // Mode switching
 function switchMode(newMode){
  if(busy||!['campaign','tutorial'].includes(newMode)||newMode===S.mode)return;
+ if(FX)FX.clearAll();
+ if(S)E.drainEvents(S);
  save(); // save current mode progress first
  currentMode=newMode;
  try{localStorage.setItem(MODE_KEY,newMode);}catch{}
  S=loadSave(newMode);
+ if(S)E.drainEvents(S);
  humanTurnReport=S.lastTurnReport||null;
  clearUndo();
  cancelAction();
@@ -798,6 +1011,31 @@ function renderObjectives(){
  container.innerHTML=`${modeTag}<h3>${esc(obj.title)} <small>期限：${obj.roundLimit}回合</small></h3>${itemsHtml}${hintsHtml}${outcomeBanner}`;
 }
 
+// Battle Stats Panel (in-progress)
+function renderBattleStatsPanel(){
+ const container=$('battleStatsPanel');
+ if(!container)return;
+ const stats=S.battleStats||{de:{damage:0,healed:0,resupplied:0,captures:0,kills:0},su:{damage:0,healed:0,resupplied:0,captures:0,kills:0}};
+ const showBoth=perspective==='god';
+ const sides=showBoth?['de','su']:[perspective];
+ 
+ let html='<h3>战况战功统计</h3><div class="battle-stats-grid">';
+ for(const sd of sides){
+  const sideName=sd==='de'?'德军':'苏军';
+  const st=stats[sd]||{damage:0,healed:0,resupplied:0,captures:0,kills:0};
+  const prefix=showBoth?`[${sideName}] `:'' ;
+  html+=`
+   <div class="battle-stat-item"><span>${prefix}造成兵力伤害</span><strong>${st.damage||0}</strong></div>
+   <div class="battle-stat-item"><span>${prefix}救治与抢修 HP</span><strong>${st.healed||0}</strong></div>
+   <div class="battle-stat-item"><span>${prefix}成功补给</span><strong>${st.resupplied||0} 次</strong></div>
+   <div class="battle-stat-item"><span>${prefix}夺取城市据点</span><strong>${st.captures||0} 次</strong></div>
+   <div class="battle-stat-item" style="grid-column: span 2;"><span>${prefix}完全击毁敌方编制</span><strong>${st.kills||0} 队</strong></div>
+  `;
+ }
+ html+='</div>';
+ container.innerHTML=html;
+}
+
 // Turn Report
 function renderTurnReport(){
  const container=$('turnReportPanel');
@@ -841,15 +1079,68 @@ function showOutcomeModal(){
  $('outcomeTitle').textContent=(perspective==='god'?'战役结束':won?'战役胜利':'战役失利')+' · '+(res.winner==='de'?'德军获胜':'苏军获胜');
  $('outcomeReason').textContent='结算原因：'+res.reason+'（第 '+res.round+' 回合）';
 
+ if(P){
+  P.recordGameResult(S);
+  const medals=P.calculateMedals(S);
+  if($('outcomeMedals')){
+   $('outcomeMedals').innerHTML=medals.length?`<p>胜方战功 · ${res.winner==='de'?'德军':'苏军'}</p>`+medals.map(m=>`<span class="medal-badge">🎖️ ${esc(m)}</span>`).join(''):'';
+  }
+ }
+
  const deS=res.stats?.de||{active:0,destroyed:0,captured:0,routed:0,lostHp:0};
  const suS=res.stats?.su||{active:0,destroyed:0,captured:0,routed:0,lostHp:0};
+ const deBS=res.battleStats?.de||S.battleStats?.de||{damage:0,healed:0,resupplied:0,captures:0,kills:0};
+ const suBS=res.battleStats?.su||S.battleStats?.su||{damage:0,healed:0,resupplied:0,captures:0,kills:0};
 
- $('outcomeStats').innerHTML=`<div class="outcome-stats-grid"><div class="outcome-stats-col"><h4>德军战损统计</h4><p>在场残余：${deS.active} 队</p><p>阵亡摧毁：${deS.destroyed} 队</p><p>被俘部队：${deS.captured} 队</p><p>溃散减员：${deS.routed} 队</p><p>兵力缺额：${deS.lostHp} HP</p></div><div class="outcome-stats-col"><h4>苏军战损统计</h4><p>在场残余：${suS.active} 队</p><p>阵亡摧毁：${suS.destroyed} 队</p><p>被俘部队：${suS.captured} 队</p><p>溃散减员：${suS.routed} 队</p><p>兵力缺额：${suS.lostHp} HP</p></div></div>`;
+ function findTopVeteran(side){
+  const units=S.units.filter(u=>u.side===side&&E.alive(u));
+  if(!units.length)return '无存活部队';
+  units.sort((a,b)=>(b.xp||0)-(a.xp||0)||((b.kills||0)-(a.kills||0)));
+  const top=units[0];
+  if(!top.xp)return '尚无经验记录';
+  const vet=E.veteran(top);
+  return `${top.name}（${vet.name} · ${top.xp} XP · ${top.kills||0} 击毁）`;
+ }
+
+ $('outcomeStats').innerHTML=`<div class="outcome-stats-grid">
+  <div class="outcome-stats-col">
+   <h4>德军战损与战功统计</h4>
+   <p>在场残余：${deS.active} 队</p>
+   <p>阵亡摧毁：${deS.destroyed} 队</p>
+   <p>被俘部队：${deS.captured} 队</p>
+   <p>溃散减员：${deS.routed} 队</p>
+   <p>兵力缺额：${deS.lostHp} HP</p>
+   <hr style="border:0;border-top:1px dashed #cfcbba;margin:6px 0;">
+   <p>造成伤害：${deBS.damage||0} HP</p>
+   <p>治疗抢修：${deBS.healed||0} HP</p>
+   <p>成功补给：${deBS.resupplied||0} 次</p>
+   <p>夺取据点：${deBS.captures||0} 次</p>
+   <p>击毁编制：${deBS.kills||0} 队</p>
+   <p><strong>头号功勋部队：</strong><br>${esc(findTopVeteran('de'))}</p>
+  </div>
+  <div class="outcome-stats-col">
+   <h4>苏军战损与战功统计</h4>
+   <p>在场残余：${suS.active} 队</p>
+   <p>阵亡摧毁：${suS.destroyed} 队</p>
+   <p>被俘部队：${suS.captured} 队</p>
+   <p>溃散减员：${suS.routed} 队</p>
+   <p>兵力缺额：${suS.lostHp} HP</p>
+   <hr style="border:0;border-top:1px dashed #cfcbba;margin:6px 0;">
+   <p>造成伤害：${suBS.damage||0} HP</p>
+   <p>治疗抢修：${suBS.healed||0} HP</p>
+   <p>成功补给：${suBS.resupplied||0} 次</p>
+   <p>夺取据点：${suBS.captures||0} 次</p>
+   <p>击毁编制：${suBS.kills||0} 队</p>
+   <p><strong>头号功勋部队：</strong><br>${esc(findTopVeteran('su'))}</p>
+  </div>
+ </div>`;
  $('outcomeDialog').showModal();
 }
 
 function restartCurrentMode(){
+ if(FX)FX.clearAll();
  S=E.newGame(S.mode);
+ if(S)E.drainEvents(S);
  humanTurnReport=null;
  clearUndo();
  cancelAction();
@@ -901,6 +1192,7 @@ for(const kind of ['recon','strike'])$('air'+kind).onclick=()=>{
 
 $('artToggle').onchange=renderUnits;
 $('perspective').onchange=()=>{
+ if(FX)FX.clearAll();
  perspective=$('perspective').value;
  clearUndo();
  selected=null;
@@ -968,11 +1260,57 @@ $('fit').onclick=()=>{
   setRegion('all');
  }
 };
+function openArchiveDialog(){
+ const container=$('archiveList');
+ if(!container)return;
+ const records=P?P.getArchiveRecords():[];
+ if(!records.length){
+  container.innerHTML='<p class="empty" style="padding:15px 0;">暂无战绩档案记录。完成战役后自动收录。</p>';
+ }else{
+  container.innerHTML=records.map(r=>{
+   const modeLabel=r.mode==='tutorial'?'入门教学':'完整战役';
+   const winLabel=r.winner==='de'?'德军胜利':'苏军胜利';
+   const medalsHtml=Array.isArray(r.medals)&&r.medals.length?r.medals.map(m=>`<span class="medal-badge" style="margin-right:5px;font-size:10px;">🎖️ ${esc(m)}</span>`).join(''):'<span style="color:var(--muted);font-size:10px;">无战功勋章</span>';
+   return `<div class="archive-item">
+    <div class="archive-item-header">
+     <strong>${esc(modeLabel)} · ${esc(winLabel)}</strong>
+     <small>${esc(r.date||'未知日期')}</small>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">结算：第 ${r.round} 回合 · ${esc(r.reason||'')}</div>
+    <div style="margin-top:4px;">${medalsHtml}</div>
+   </div>`;
+  }).join('');
+ }
+ if($('archiveDialog'))$('archiveDialog').showModal();
+}
+
+if($('archiveBtn'))$('archiveBtn').onclick=openArchiveDialog;
+if($('closeArchive'))$('closeArchive').onclick=()=>$('archiveDialog').close();
+
+if($('soundToggle'))$('soundToggle').onchange=e=>{
+ settings.sound=!!e.target.checked;
+ if(!settings.sound&&FX)FX.clearAll();
+ if(settings.sound&&FX)FX.userAudioGesture();
+ if(P)P.saveSettings(settings);
+};
+
+if($('animSelect'))$('animSelect').onchange=e=>{
+ if(FX)FX.clearAll();
+ settings.anim=e.target.value;
+ applySettingsToDom();
+ if(P)P.saveSettings(settings);
+};
+
+function resumeSavedSound(){if(settings.sound&&FX)FX.userAudioGesture();}
+document.addEventListener('pointerdown',resumeSavedSound,{once:true});
+document.addEventListener('keydown',resumeSavedSound,{once:true});
+
 $('fullscreen').onclick=expanded;
 $('historyBtn').onclick=()=>$('history').showModal();
 $('closeHistory').onclick=()=>$('history').close();
 document.addEventListener('keydown',e=>{
  if(e.key==='Escape'){
+  if($('archiveDialog')&&$('archiveDialog').open){$('archiveDialog').close();return;}
   if($('endTurnDialog').open){$('endTurnDialog').close();return;}
   if($('restartDialog').open){$('restartDialog').close();return;}
   if($('outcomeDialog').open){$('outcomeDialog').close();return;}

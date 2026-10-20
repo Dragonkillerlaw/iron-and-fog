@@ -29,4 +29,43 @@
 .outcome-stats-col{background:#eae8d9;padding:10px;border:1px solid #d3d1bf}
 .outcome-stats-col h4{margin:0 0 6px;font-size:12px;color:var(--ink)}
 .outcome-stats-col p{margin:2px 0;font-size:11px;color:var(--muted)}
+.header-settings{display:flex;align-items:center;gap:10px;font-size:11px;margin-right:12px}
+.header-settings label{display:flex;align-items:center;gap:4px;cursor:pointer}
+.header-settings select{padding:2px 6px;font-size:11px;background:#354b3e;color:#f0eddb;border:1px solid #b39b67}
+.header-settings input[type="checkbox"]{accent-color:#b39b67}
+.header-settings button{padding:4px 8px;border:1px solid #b39b67;background:transparent;color:#f0eddb;border-radius:2px}
+.header-settings button:hover{background:#354b3e}
+.veteran-bar{margin:10px 0 6px;padding:6px 8px;background:#eeece0;border-left:3px solid #8e7a4d}
+.veteran-bar-track{height:6px;background:#d8d6c4;border-radius:3px;overflow:hidden;margin-top:4px}
+.veteran-bar-fill{height:100%;background:#9c783e;transition:width .3s}
+.veteran-badge{fill:#f4ca64;stroke:#4b3b19;stroke-width:1}
+.unit-badge{font-size:11px;font-weight:bold;fill:#f1c242;stroke:#332915;stroke-width:2;paint-order:stroke}
+.battle-stats-panel{padding:12px 18px;border-bottom:1px solid var(--line);background:#f6f4ea;font-size:11px}
+.battle-stats-panel h3{margin:0 0 8px;font-size:12px;color:#5a6850;display:flex;justify-content:space-between}
+.battle-stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.battle-stat-item{background:#ebe8da;padding:6px 8px;border:1px solid #d5d3c2}
+.battle-stat-item span{display:block;font-size:10px;color:var(--muted)}
+.battle-stat-item strong{font-size:14px;color:var(--ink);font-family:Georgia,serif}
+.outcome-medals{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.medal-badge{padding:3px 8px;background:#d8c697;color:#3d3119;border:1px solid #9c7b41;border-radius:2px;font-size:11px;font-weight:bold}
+.archive-list{max-height:55vh;overflow-y:auto;display:grid;gap:8px;margin-top:14px}
+.archive-item{padding:10px 12px;background:#ebe8d9;border:1px solid #cfcbba;font-size:11px}
+.archive-item-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.archive-item-header strong{font-size:12px;color:#354b3e}
+.archive-item-header small{color:var(--muted);font-size:10px}
+.fx-floating-banner{position:absolute;pointer-events:none;transform:translate(-50%,-100%);font-size:12px;font-weight:bold;padding:2px 6px;border-radius:2px;z-index:12;animation:floatNotice 1s ease-out forwards}
+.notice-dmg{background:#9e3d2c;color:#fff8ea;box-shadow:0 2px 6px #0004}
+.notice-heal{background:#3b6944;color:#f8fff6;box-shadow:0 2px 6px #0004}
+.notice-defeat{background:#4a423a;color:#f5eed8;box-shadow:0 2px 6px #0004}
+.notice-bridge{background:#41657c;color:#f5faff;box-shadow:0 2px 6px #0004}
+.notice-promo{background:#967428;color:#fffbe8;box-shadow:0 2px 6px #0004}
+.fx-center-banner{position:absolute;top:20px;left:50%;transform:translateX(-50%);background:#23332edd;color:#f4eedc;border:1px solid #bb9c64;padding:8px 18px;font-size:13px;letter-spacing:1px;font-weight:600;z-index:14;pointer-events:none;animation:bannerFade 2.2s ease-in-out forwards;box-shadow:0 4px 18px #0006}
+@keyframes floatNotice{0%{opacity:0;transform:translate(-50%,-40%)}20%{opacity:1;transform:translate(-50%,-80%)}80%{opacity:1;transform:translate(-50%,-100%)}100%{opacity:0;transform:translate(-50%,-120%)}}
+@keyframes bannerFade{0%{opacity:0;transform:translate(-50%,-10px)}15%{opacity:1;transform:translate(-50%,0)}80%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-10px)}}
+@media (prefers-reduced-motion: reduce){
+ .target-pulse{animation:none!important}
+ .fx-floating-banner,.fx-center-banner{animation:none!important;opacity:1}
+}
+body.anim-off .target-pulse{animation:none!important}
+body.anim-off .fx-floating-banner,body.anim-off .fx-center-banner{animation:none!important;opacity:1}
 @media(max-width:720px){.air-tools{width:100%;flex-wrap:wrap}.air-tools button{flex:1}.air-tools small{display:none}.attack-panel{flex-wrap:wrap;padding:10px;bottom:40px}.attack-panel>div{flex-basis:100%}.attack-panel strong{font-size:12px}.attack-panel button{flex:1}.expanded .attack-panel{bottom:230px}.brand{letter-spacing:1px;font-size:16px}.brand small{font-size:8px}}

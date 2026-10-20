@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict');
+const wrap={children:[],appendChild(el){el.parentNode=this;this.children.push(el)},querySelectorAll(sel){return this.children.filter(el=>sel.split(',').some(s=>el.className.split(' ').includes(s.trim().slice(1))))},querySelector(sel){return this.querySelectorAll(sel)[0]}};
+global.document={createElement:()=>({style:{},remove(){this.parentNode.children=this.parentNode.children.filter(x=>x!==this);this.parentNode=null;}}),getElementById:id=>id==='mapWrap'?wrap:null};
+const FX=require('./effects');
+for(let i=0;i<10;i++)FX.renderBannerNotice(wrap,'city '+i);
+assert.equal(wrap.querySelectorAll('.fx-center-banner').length,3);
+for(let i=0;i<50;i++)FX.showFloatingNotice(wrap,0,0,'damage','notice-dmg');
+assert.equal(wrap.querySelectorAll('.fx-floating-banner').length,24);
+FX.clearAll();assert.equal(wrap.children.length,0);
+console.log('PASS city banner burst remains bounded and all presentation timers/elements can be cleared');
