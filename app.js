@@ -22,7 +22,7 @@ function loadSave(m=currentMode){
    if(parsed&&parsed.mode===m){
     const sWithProgress=E.ensureProgress(parsed);
     // If battleId was missing in raw save, persist upgraded save immediately to prevent duplicate archives on refresh
-    if(!parsed.battleId||raw.indexOf(sWithProgress.battleId)===-1){
+    if(!parsed.battleId||raw.indexOf(sWithProgress.battleId)===-1||JSON.parse(raw).autoSupportVersion!==1){
      try{localStorage.setItem(saveKey(m),E.serialize(sWithProgress));}catch{}
     }
     return sWithProgress;
@@ -415,7 +415,7 @@ function renderDetail(){
   };
  }
  if(own&&['medic','supply'].includes(u.role)){
-  $('detail').insertAdjacentHTML('beforeend','<label class="auto-support"><input id="autoSupportToggle" type="checkbox" '+(u.autoSupport?'checked':'')+'>未操作时自动'+(u.role==='medic'?'安全救护':'安全补给')+'</label>');
+  $('detail').insertAdjacentHTML('beforeend','<label class="auto-support"><input id="autoSupportToggle" type="checkbox" '+(u.autoSupport?'checked':'')+'>未操作时自动'+(u.role==='medic'?'安全救护':'安全补给 / 维修')+'</label>');
   $('autoSupportToggle').onchange=()=>{clearUndo();E.setAuto(S,u.id,$('autoSupportToggle').checked);save();};
  }
  if(own&&u.advance){

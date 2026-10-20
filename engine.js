@@ -114,8 +114,8 @@ const isFoot=u=>['rifle','mg','engineer','medic','hq'].includes(u.role);
 const alive=u=>u.status==='active';
 const isCombat=u=>['rifle','mg','armor','at','artillery','recon','engineer'].includes(u.role);
 function newGame(mode='campaign'){
- const s={version:3,balanceVersion:1,round:1,active:'de',units:[],forts:{},bridges:{},air:airBudget(),airRecon:{de:[],su:[]},cities:{},logs:[],explored:{de:new Set(),su:new Set()},revision:0,mode:mode==='tutorial'?'tutorial':'campaign',result:null,tutorialProgress:{moved:false,attacked:false,supported:false},lastTurnReport:null,battleId:genBattleId(),battleStats:blankBattleStats(),_events:[]};
- s.units=D.units.map(u=>{const ro=role(u),p=profiles[ro],su=u.side==='su',modern=su&&u.asset==='medium',hp=ro==='armor'?(modern?145:su?115:125):['supply','medic','hq'].includes(ro)?80:su?130:110;return {...u,role:ro,asset:unitArt(u),autoSupport:ro==='medic',project:null,hp,maxHp:hp,morale:su?(modern?60:48):86,ammo:su?5:8,maxAmmo:8,fuel:su?65:100,maxFuel:100,stock:ro==='engineer'?3:ro==='medic'?5:ro==='supply'?12:0,attack:unitAttack(u),defense:Math.round(p.defense*(su?.75:1.15)*(modern?1.65:1)),maxMove:Math.max(2,p.move-(su?1:0)),mp:Math.max(2,p.move-(su?1:0)),acted:false,moved:false,status:'active',isolated:0,modern,xp:0,kills:0};});
+ const s={version:3,balanceVersion:1,autoSupportVersion:1,round:1,active:'de',units:[],forts:{},bridges:{},air:airBudget(),airRecon:{de:[],su:[]},cities:{},logs:[],explored:{de:new Set(),su:new Set()},revision:0,mode:mode==='tutorial'?'tutorial':'campaign',result:null,tutorialProgress:{moved:false,attacked:false,supported:false},lastTurnReport:null,battleId:genBattleId(),battleStats:blankBattleStats(),_events:[]};
+ s.units=D.units.map(u=>{const ro=role(u),p=profiles[ro],su=u.side==='su',modern=su&&u.asset==='medium',hp=ro==='armor'?(modern?145:su?115:125):['supply','medic','hq'].includes(ro)?80:su?130:110;return {...u,role:ro,asset:unitArt(u),autoSupport:['medic','supply'].includes(ro),project:null,hp,maxHp:hp,morale:su?(modern?60:48):86,ammo:su?5:8,maxAmmo:8,fuel:su?65:100,maxFuel:100,stock:ro==='engineer'?3:ro==='medic'?5:ro==='supply'?12:0,attack:unitAttack(u),defense:Math.round(p.defense*(su?.75:1.15)*(modern?1.65:1)),maxMove:Math.max(2,p.move-(su?1:0)),mp:Math.max(2,p.move-(su?1:0)),acted:false,moved:false,status:'active',isolated:0,modern,xp:0,kills:0};});
  for(const t of D.towns)s.cities[t.id]=D.position(t.q,t.r).x<D.borderX(D.position(t.q,t.r).y)?'de':'su';
  for(const u of s.units)u.waiting=false;
  if(s.mode==='tutorial'){
@@ -1160,7 +1160,7 @@ function restore(raw){try{
   if(isTutorial&&s.missionArea&&(u.q<s.missionArea.minQ||u.q>s.missionArea.maxQ||u.r<s.missionArea.minR||u.r>s.missionArea.maxR))return null;
   ids.add(u.id);
   u.asset=unitArt(u);
-  u.autoSupport=u.autoSupport??(u.role==='medic');
+  u.autoSupport=['medic','supply'].includes(u.role)&&(s.autoSupportVersion!==1?true:(u.autoSupport??true));
   u.project=u.project||null;
   u.waiting=u.waiting||false;
   u.xp=Number.isFinite(u.xp)?Math.max(0,Math.min(200,Math.floor(u.xp))):0;
@@ -1182,6 +1182,7 @@ function restore(raw){try{
  for(const u of s.units)if(u.advance&&advanceReason(s,u))delete u.advance;
  s.version=3;
  s.balanceVersion=1;
+ s.autoSupportVersion=1;
  s.explored={de:new Set(s.explored.de),su:new Set(s.explored.su)};
  invalidate(s);
  updateSight(s);
