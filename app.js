@@ -36,10 +36,82 @@ function pointIn(svg,e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY
 function shortName(u){return u.name.replace('装甲集群 · ','').replace('集团军 · ','军·').replace('第','').replace('机械化军 · ','机·').replace(' · 指挥部',' HQ').replace('西方面军后方 · ','后方·');}
 const controllable=u=>!busy&&u&&E.alive(u)&&u.side===S.active&&(perspective==='god'||u.side===perspective);
 function specialIcon(u){const c=color(u.side);return `<g><rect x="-22" y="-29" width="44" height="36" rx="5" fill="${c}" stroke="#f3e9ca" stroke-width="2"/><text y="-3" text-anchor="middle" fill="#fff8df" font-size="25">${E.profiles[u.role].symbol}</text></g>`;}
+function nextReadyId(units, currentId, activeSide) {
+  if (!Array.isArray(units) || units.length === 0) return null;
+  function isEligible(u) {
+    return !!(u && u.side === activeSide && u.status === 'active' && u.hp > 0 && !u.acted);
+  }
+  var len = units.length;
+  var startIdx = 0;
+  if (currentId !== null && currentId !== undefined) {
+    for (var i = 0; i < len; i++) {
+      if (units[i] && units[i].id === currentId) {
+        startIdx = i + 1;
+        break;
+      }
+    }
+  }
+  for (var step = 0; step < len; step++) {
+    var candidate = units[(startIdx + step) % len];
+    if (isEligible(candidate)) {
+      return candidate.id;
+    }
+  }
+  return null;
+}
+function renderNextReadyButton() {
+  var btn = $('nextReady');
+  if (!btn) return;
+  var isOpponentTurn = perspective !== 'god' && perspective !== S.active;
+  var count = 0;
+  if (!isOpponentTurn && Array.isArray(S.units)) {
+    for (var i = 0; i < S.units.length; i++) {
+      var u = S.units[i];
+      if (u && u.side === S.active && u.status === 'active' && u.hp > 0 && !u.acted) {
+        count++;
+      }
+    }
+  }
+  btn.disabled = !!(busy || isOpponentTurn || count === 0);
+  btn.textContent = '下一支未行动（' + count + '）';
+}
+function selectNextReadyUnit() {
+  if (busy || (perspective !== 'god' && perspective !== S.active)) return;
+  var targetId = nextReadyId(S.units, selected, S.active);
+  if (targetId === null) {
+    var hintEl = $('actionHint');
+    if (hintEl) hintEl.textContent = '本回合没有未行动部队';
+    return;
+  }
+  var targetUnit = null;
+  if (Array.isArray(S.units)) {
+    for (var i = 0; i < S.units.length; i++) {
+      if (S.units[i] && S.units[i].id === targetId) {
+        targetUnit = S.units[i];
+        break;
+      }
+    }
+  }
+  if (!targetUnit) return;
+  if (!visible(targetUnit)) {
+    side = 'all';
+    type = 'all';
+    query = '';
+    var sFilter = $('sideFilter');
+    var tFilter = $('typeFilter');
+    var qInput = $('search');
+    if (sFilter) sFilter.value = 'all';
+    if (tFilter) tFilter.value = 'all';
+    if (qInput) qInput.value = '';
+  }
+  showUnit(targetId, true);
+  var hint = $('actionHint');
+  if (hint) hint.textContent = '已定位未行动部队：' + (targetUnit.name || '');
+}
 function renderUnits(){if(!$('units'))return;const artOn=$('artToggle').checked;let html='',mini='';for(const u of S.units.filter(visible)){const p=D.position(u.q,u.r),c=color(u.side),chosen=u.id===selected,symbol=E.profiles[u.role].symbol;html+=`<g class="unit ${u.acted?'spent':''}" data-unit="${u.id}" transform="translate(${p.x} ${p.y})" role="button" tabindex="0" aria-label="${esc((u.side==='de'?'德军 ':'苏军 ')+u.name+'，'+coord(u))}"><title>${esc(u.name+' · '+E.profiles[u.role].name+' · 兵力'+u.hp+' · 士气'+u.morale)}</title>${chosen?'<ellipse class="selected-ring" cy="5" rx="39" ry="28"/>':''}<ellipse class="unit-base" cy="13" rx="30" ry="13" fill="${c}" stroke="#e8dfbf" stroke-width="2"/>${artOn&&u.asset?'<g class="unit-art">'+sprite(u.asset,-41,-55,82,70)+'</g>':specialIcon(u)}<rect x="-31" y="9" width="21" height="18" rx="2" fill="${c}" stroke="#e8dfbf"/><text x="-20.5" y="22" font-size="12" fill="#fff6dc" text-anchor="middle">${symbol}</text><path d="M-27 31h54" stroke="#544d3e" stroke-width="5"/><path d="M-27 31h${54*u.hp/u.maxHp}" stroke="${u.morale<25?'#c46a4c':'#c4d29b'}" stroke-width="5"/>${chosen?`<text class="unit-label" y="50">${esc(shortName(u))}</text>`:''}</g>`;mini+=`<circle cx="${p.x}" cy="${p.y}" r="${chosen?35:23}" fill="${c}" ${chosen?'stroke="#f7ce6d" stroke-width="12"':''}/>`;}
  $('units').innerHTML=html;$('miniUnits').innerHTML=mini;const all=S.units.filter(u=>E.alive(u)&&E.canSee(S,u,perspective));$('filteredCount').textContent='当前显示 '+S.units.filter(visible).length+' / 已知 '+all.length+' 队';
  for(const side of ['de','su']){const own=perspective==='god'||perspective===side,list=S.units.filter(u=>u.side===side&&(own||E.canSee(S,u,perspective)));$(side+'Count').textContent=list.filter(E.alive).length;$(side+'Caption').textContent=own?'在场':'已发现';}
- $('phase').textContent='第 '+S.round+' 回合 · '+(S.active==='de'?'德军':'苏军');$('endTurn').textContent=perspective!=='god'&&perspective!==S.active?'推进敌军回合':'结束回合';$('endTurn').disabled=busy;renderAirButtons();$('perspective').disabled=busy;$('reset').disabled=busy;
+ $('phase').textContent='第 '+S.round+' 回合 · '+(S.active==='de'?'德军':'苏军');$('endTurn').textContent=perspective!=='god'&&perspective!==S.active?'推进敌军回合':'结束回合';$('endTurn').disabled=busy;renderAirButtons();renderNextReadyButton();$('perspective').disabled=busy;$('reset').disabled=busy;
  const seenLogs=S.logs.filter(e=>perspective==='god'||e.audience.includes(perspective)).slice(0,8);$('battleLog').innerHTML=seenLogs.map(e=>`<li><small>R${e.round}</small>${esc(e.text)}</li>`).join('')||'<li>选择己方部队开始行动。</li>';
  const ownLoss=S.units.filter(u=>u.side===(perspective==='god'?S.active:perspective)&&!E.alive(u));$('losses').textContent='己方退场 '+ownLoss.length+' · 被俘 '+ownLoss.filter(u=>u.status==='captured').length;
 }
@@ -107,7 +179,7 @@ $('boardStats').textContent='81 × 67 · 城市街区 / 工事 / 战争迷雾';
 for(const [input,target]of [['gridToggle','cells'],['planToggle','axes'],['borderToggle','border']])$(input).onchange=()=>{if(input==='gridToggle')$('map').classList.toggle('no-grid',!$(input).checked);else $(target).style.display=$(input).checked?'':'none';};
 $('confirmAttack').onclick=confirmAttack;$('cancelAttack').onclick=()=>{const id=pendingTarget?.kind==='advance'?pendingTarget.attacker:null;cancelAction();if(id)perform(E.declineAdvance(S,id));else renderMoves();};
  for(const kind of ['recon','strike'])$('air'+kind).onclick=()=>{if(busy)return;cancelAction();selected=null;actionMode=kind==='recon'?'airRecon':'airStrike';$('cancelAction').hidden=false;$('actionHint').textContent='点击地图选择'+(kind==='recon'?'侦察区域':'已发现的空袭目标')+'，再确认派遣';renderDetail();renderUnits();renderMoves();};
- $('artToggle').onchange=renderUnits;$('perspective').onchange=()=>{perspective=$('perspective').value;selected=null;cancelAction();refresh();};$('endTurn').onclick=nextTurn;$('cancelAction').onclick=()=>{cancelAction();renderMoves();};$('reset').onclick=()=>$('restartDialog').showModal();$('cancelReset').onclick=()=>$('restartDialog').close();$('confirmReset').onclick=()=>{S=E.newGame();selected=null;cancelAction();save();refresh();$('restartDialog').close();};
+ $('artToggle').onchange=renderUnits;$('perspective').onchange=()=>{perspective=$('perspective').value;selected=null;cancelAction();refresh();};if($('nextReady'))$('nextReady').onclick = selectNextReadyUnit;$('endTurn').onclick=nextTurn;$('cancelAction').onclick=()=>{cancelAction();renderMoves();};$('reset').onclick=()=>$('restartDialog').showModal();$('cancelReset').onclick=()=>$('restartDialog').close();$('confirmReset').onclick=()=>{S=E.newGame();selected=null;cancelAction();save();refresh();$('restartDialog').close();};
 const map=$('map');map.onclick=onMapClick;map.onkeydown=onKey;map.onpointerover=e=>{const el=e.target.closest('[data-unit],[data-city],[data-q]');if(!el)return;if(el.dataset.unit){const u=S.units.find(u=>u.id===el.dataset.unit);$('hoverInfo').textContent=(u.side==='de'?'德军 · ':'苏军 · ')+u.name+' / '+coord(u);}else if(el.dataset.q!==undefined)$('hoverInfo').textContent=coord({q:+el.dataset.q,r:+el.dataset.r})+' · '+E.terrainName(+el.dataset.q,+el.dataset.r);};
 map.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?.86:1.16,pointIn(map,e));},{passive:false});
 map.onpointerdown=e=>{if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y,scale:map.getScreenCTM().a,moved:false};};map.onpointermove=e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>5){drag.moved=true;map.classList.add('dragging');map.setPointerCapture(e.pointerId);view.x=drag.vx-dx/drag.scale;view.y=drag.vy-dy/drag.scale;applyView();}};const endDrag=e=>{suppressClick=!!drag?.moved;drag=null;map.classList.remove('dragging');if(map.hasPointerCapture(e.pointerId))map.releasePointerCapture(e.pointerId);};map.onpointerup=endDrag;map.onpointercancel=endDrag;map.onpointerleave=()=>{if(drag&&!drag.moved)drag=null;};
