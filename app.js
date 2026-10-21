@@ -86,6 +86,8 @@ function clampView(){
   view.y=Math.max(0,Math.min(D.board.height-view.h,view.y));
  }
 }
+let viewFrame=0;
+function scheduleView(){if(!viewFrame)viewFrame=requestAnimationFrame(()=>{viewFrame=0;applyView();});}
 function applyView(){clampView();$('map').setAttribute('viewBox',`${view.x} ${view.y} ${view.w} ${view.h}`);for(const [attr,val]of Object.entries({x:view.x,y:view.y,width:view.w,height:view.h}))$('miniView').setAttribute(attr,val);}
 function setRegion(id){
  if(S.mode==='tutorial'&&id!=='south'){return;}
@@ -95,7 +97,7 @@ function setRegion(id){
  applyView();renderUnits();
 }
 function focusUnit(u){const p=D.position(u.q,u.r);view={x:p.x-740,y:p.y-565,w:1480,h:1130};$('viewName').textContent=group(u).area;$('regions').querySelectorAll('button').forEach(b=>b.classList.remove('active'));applyView();renderUnits();}
-function zoom(f,point){const old={...view},maxW=S.mode==='tutorial'&&S.missionView?S.missionView.w:D.board.width,w=Math.max(450,Math.min(maxW,view.w*f)),ratio=w/view.w,maxH=S.mode==='tutorial'&&S.missionView?S.missionView.h:D.board.height,h=Math.max(320,Math.min(maxH,view.h*ratio));const px=point?Math.max(0,Math.min(1,(point.x-view.x)/view.w)):.5,py=point?Math.max(0,Math.min(1,(point.y-view.y)/view.h)):.5;view={x:old.x+px*(old.w-w),y:old.y+py*(old.h-h),w,h};applyView();renderUnits();}
+function zoom(f,point){const old={...view},maxW=S.mode==='tutorial'&&S.missionView?S.missionView.w:D.board.width,w=Math.max(450,Math.min(maxW,view.w*f)),ratio=w/view.w,maxH=S.mode==='tutorial'&&S.missionView?S.missionView.h:D.board.height,h=Math.max(320,Math.min(maxH,view.h*ratio));const px=point?Math.max(0,Math.min(1,(point.x-view.x)/view.w)):.5,py=point?Math.max(0,Math.min(1,(point.y-view.y)/view.h)):.5;view={x:old.x+px*(old.w-w),y:old.y+py*(old.h-h),w,h};applyView();}
 function pointIn(svg,e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse());}
 function shortName(u){return u.name.replace('装甲集群 · ','').replace('集团军 · ','军·').replace('第','').replace('机械化军 · ','机·').replace(' · 指挥部',' HQ').replace('西方面军后方 · ','后方·');}
 
@@ -188,19 +190,38 @@ function updateRegionsForMode(){
  }
 }
 
+// Keep unchanged SVG sprites alive instead of reparsing every unit on every AI update.
+const svgChildren=new WeakMap();
+function syncSvgChildren(container,items){
+ let cache=svgChildren.get(container);
+ if(!cache){cache=new Map();svgChildren.set(container,cache);}
+ const present=new Set();
+ for(const [id,markup] of items){
+  present.add(id);
+  const old=cache.get(id);
+  if(old?.markup===markup)continue;
+  const holder=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  holder.innerHTML=markup;
+  const node=holder.firstElementChild;
+  if(old)old.node.replaceWith(node);else container.appendChild(node);
+  cache.set(id,{markup,node});
+ }
+ for(const [id,entry] of cache)if(!present.has(id)){entry.node.remove();cache.delete(id);}
+}
 function renderUnits(){
  if(!$('units'))return;
  const artOn=$('artToggle').checked;
- let html='',mini='';
+ const unitItems=[],miniItems=[];
  for(const u of S.units.filter(visible)){
   const p=D.position(u.q,u.r),c=color(u.side),chosen=u.id===selected,symbol=E.profiles[u.role].symbol;
   const vet=E.veteran(u);
   const badgeText=vet.level>0?('★'.repeat(vet.level)):null;
   const badgeSvg=badgeText?`<text class="unit-badge" x="18" y="24">${badgeText}</text>`:'';
-  html+=`<g class="unit ${u.acted?'spent':''}" data-unit="${u.id}" transform="translate(${p.x} ${p.y})" role="button" tabindex="0" aria-label="${esc((u.side==='de'?'德军 ':'苏军 ')+u.name+'，'+coord(u))}"><title>${esc(u.name+' · '+E.profiles[u.role].name+' · '+vet.name+' · 兵力'+u.hp+' · 士气'+u.morale)}</title>${chosen?'<ellipse class="selected-ring" cy="5" rx="39" ry="28"/>':''}<ellipse class="unit-base" cy="13" rx="30" ry="13" fill="${c}" stroke="#e8dfbf" stroke-width="2"/>${artOn&&u.asset?'<g class="unit-art">'+sprite(u.asset,-41,-55,82,70)+'</g>':specialIcon(u)}<rect x="-31" y="9" width="21" height="18" rx="2" fill="${c}" stroke="#e8dfbf"/><text x="-20.5" y="22" font-size="12" fill="#fff6dc" text-anchor="middle">${symbol}</text>${badgeSvg}<path d="M-27 31h54" stroke="#544d3e" stroke-width="5"/><path d="M-27 31h${54*u.hp/u.maxHp}" stroke="${u.morale<25?'#c46a4c':'#c4d29b'}" stroke-width="5"/>${chosen?`<text class="unit-label" y="50">${esc(shortName(u))}</text>`:''}</g>`;
-  mini+=`<circle cx="${p.x}" cy="${p.y}" r="${chosen?35:23}" fill="${c}" ${chosen?'stroke="#f7ce6d" stroke-width="12"':''}/>`;
+  const html=`<g class="unit ${u.acted?'spent':''}" data-unit="${u.id}" transform="translate(${p.x} ${p.y})" role="button" tabindex="0" aria-label="${esc((u.side==='de'?'德军 ':'苏军 ')+u.name+'，'+coord(u))}"><title>${esc(u.name+' · '+E.profiles[u.role].name+' · '+vet.name+' · 兵力'+u.hp+' · 士气'+u.morale)}</title>${chosen?'<ellipse class="selected-ring" cy="5" rx="39" ry="28"/>':''}<ellipse class="unit-base" cy="13" rx="30" ry="13" fill="${c}" stroke="#e8dfbf" stroke-width="2"/>${artOn&&u.asset?'<g class="unit-art">'+sprite(u.asset,-41,-55,82,70)+'</g>':specialIcon(u)}<rect x="-31" y="9" width="21" height="18" rx="2" fill="${c}" stroke="#e8dfbf"/><text x="-20.5" y="22" font-size="12" fill="#fff6dc" text-anchor="middle">${symbol}</text>${badgeSvg}<path d="M-27 31h54" stroke="#544d3e" stroke-width="5"/><path d="M-27 31h${54*u.hp/u.maxHp}" stroke="${u.morale<25?'#c46a4c':'#c4d29b'}" stroke-width="5"/>${chosen?`<text class="unit-label" y="50">${esc(shortName(u))}</text>`:''}</g>`;
+  const mini=`<circle cx="${p.x}" cy="${p.y}" r="${chosen?35:23}" fill="${c}" ${chosen?'stroke="#f7ce6d" stroke-width="12"':''}/>`;
+  unitItems.push([u.id,html]);miniItems.push([u.id,mini]);
  }
- $('units').innerHTML=html;$('miniUnits').innerHTML=mini;
+ syncSvgChildren($('units'),unitItems);syncSvgChildren($('miniUnits'),miniItems);
  const all=S.units.filter(u=>E.alive(u)&&inMissionArea(u)&&E.canSee(S,u,perspective));
  $('filteredCount').textContent='当前显示 '+S.units.filter(visible).length+' / 已知 '+all.length+' 队';
  for(const side of ['de','su']){
@@ -229,37 +250,33 @@ function renderUnits(){
  checkAndShowOutcomeDialog();
 }
 
+// Three compound paths replace thousands of fog polygons in both maps.
+let fogGeometry=null,lastFogMarkup=null;
 function renderFog(){
  sight=perspective==='god'?null:E.vision(S,perspective);
- let fog='';
  const minQ=S.mode==='tutorial'&&S.missionArea?S.missionArea.minQ:0;
  const maxQ=S.mode==='tutorial'&&S.missionArea?S.missionArea.maxQ:D.board.cols-1;
  const minR=S.mode==='tutorial'&&S.missionArea?S.missionArea.minR:0;
  const maxR=S.mode==='tutorial'&&S.missionArea?S.missionArea.maxR:D.board.rows-1;
-
- if(sight){
+ if(!fogGeometry){
+  fogGeometry=[];
   for(let r=0;r<D.board.rows;r++)for(let q=0;q<D.board.cols;q++){
-   const inArea=q>=minQ&&q<=maxQ&&r>=minR&&r<=maxR;
-   if(S.mode==='tutorial'&&!inArea){
-    const p=D.position(q,r);
-    fog+=`<polygon points="${poly(p.x,p.y,35)}" fill="#19221d" opacity=".95"/>`;
-    continue;
-   }
-   const k=E.key(q,r);
-   if(sight.has(k))continue;
    const p=D.position(q,r);
-   fog+=`<polygon points="${poly(p.x,p.y,35)}" fill="${S.explored[perspective].has(k)?'#3e4c43':'#23342e'}" opacity="${S.explored[perspective].has(k)?.48:.88}"/>`;
-  }
- }else if(S.mode==='tutorial'){
-  for(let r=0;r<D.board.rows;r++)for(let q=0;q<D.board.cols;q++){
-   const inArea=q>=minQ&&q<=maxQ&&r>=minR&&r<=maxR;
-   if(!inArea){
-    const p=D.position(q,r);
-    fog+=`<polygon points="${poly(p.x,p.y,35)}" fill="#19221d" opacity=".95"/>`;
-   }
+   fogGeometry.push({q,r,key:E.key(q,r),path:'M'+poly(p.x,p.y,35).replaceAll(' ','L')+'Z'});
   }
  }
- $('fog').innerHTML=fog;$('miniFog').innerHTML=fog;$('formations').style.display=perspective==='god'?'':'none';
+ const paths=['','',''];
+ for(const cell of fogGeometry){
+  const outside=cell.q<minQ||cell.q>maxQ||cell.r<minR||cell.r>maxR;
+  if(S.mode==='tutorial'&&outside)paths[2]+=cell.path;
+  else if(sight&&!sight.has(cell.key))paths[S.explored[perspective].has(cell.key)?1:0]+=cell.path;
+ }
+ const fills=['#23342e','#3e4c43','#19221d'],opacity=[.88,.48,.95];
+ const fog=paths.map((d,i)=>d?'<path d="'+d+'" fill="'+fills[i]+'" opacity="'+opacity[i]+'"/>':'').join('');
+ if(fog!==lastFogMarkup){
+  $('fog').innerHTML=fog;$('miniFog').innerHTML=fog;lastFogMarkup=fog;
+ }
+ $('formations').style.display=perspective==='god'?'':'none';
  for(const t of D.towns){
   const el=$('places').querySelector('[data-city="'+t.id+'"] circle');
   if(el)el.setAttribute('fill',perspective==='god'||sight.has(E.key(t.q,t.r))?color(S.cities[t.id]):'#b7ae90');
@@ -793,59 +810,99 @@ function requestEndTurn(){
  }
 }
 
+// Yield past a paint before accepting another snapshot (also works in hidden tabs).
+function yieldToBrowser(){return new Promise(resolve=>setTimeout(resolve,16));}
+function createTurnExecutor(){
+ let worker=null;
+ try{if(typeof Worker!=='undefined')worker=new Worker('turn-worker.js?v=0.5.2');}catch{}
+ const stop=()=>{if(worker)worker.terminate();worker=null;};
+ const local=async task=>{
+  await yieldToBrowser();
+  return window.BARB_TURN.runTask(S,task.kind==='units'?{...task,ids:task.ids.slice(0,1)}:task);
+ };
+ return {
+  close:stop,
+  async run(task){
+   if(!worker)return local(task);
+   return new Promise((resolve,reject)=>{
+    let settled=false;
+    const fallback=()=>{
+     if(settled)return;settled=true;clearTimeout(timer);stop();
+     // Worker results are atomic: an unacknowledged task can safely be retried.
+     local(task).then(resolve,reject);
+    };
+    const timer=setTimeout(fallback,15000);
+    worker.onerror=e=>{e.preventDefault();fallback();};
+    worker.onmessageerror=fallback;
+    worker.onmessage=({data})=>{
+     if(settled)return;
+     if(data.error){fallback();return;}
+     settled=true;clearTimeout(timer);resolve(data);
+    };
+    try{worker.postMessage({state:window.BARB_TURN.snapshot(S),task});}catch{fallback();}
+   });
+  }
+ };
+}
 async function executeNextTurn(){
  if(busy||isGameFinished())return;
  busy=true;clearUndo();cancelAction();selected=null;
+ renderUnits();renderMoves();renderDetail();
+ $('actionHint').textContent='正在结算回合…';
+ const executor=createTurnExecutor();
+ let turnError=false;
+ const run=async task=>{
+  const packet=await executor.run(task);
+  S=packet.state;
+  return packet;
+ };
  try{
+  await yieldToBrowser();
   if(perspective==='god'||S.active===perspective){
-   const turnRes=E.endTurn(S);
-   const endEvs=E.drainEvents(S);
-   if(endEvs.length)processEngineEvents(endEvs,{isAi:false});
+   const packet=await run({kind:'endTurn'});
    if(S.lastTurnReport){
     humanTurnReport=S.lastTurnReport;
     S.turnReports=S.turnReports||{};S.turnReports[humanTurnReport.side]=humanTurnReport;
    }
-   if(S.result){
-    save();refresh();return;
-   }
+   renderFog();renderUnits();
+   processEngineEvents(packet.events,{isAi:false});
+   if(S.result){save();return;}
   }
   if(perspective!=='god'&&S.active!==perspective){
-   renderUnits();
    $('actionHint').textContent='敌军行动中…';
-   if(E.aiAirStep)for(let i=0;i<4&&!S.result;i++){
-    const air=E.aiAirStep(S);if(!air?.ok)break;
-    const airEvs=E.drainEvents(S);
-    if(airEvs.length)processEngineEvents(airEvs,{isAi:true});
-    E.checkOutcome(S);
+   for(let i=0;i<4&&!S.result;i++){
+    const packet=await run({kind:'air'}),air=packet.result;
+    if(!air?.ok)break;
+    renderFog();renderUnits();
+    processEngineEvents(packet.events,{isAi:true});
     if(E.vision(S,perspective).has(E.key(air.q,air.r)))await animateFlight(air.kind,air);
+    await yieldToBrowser();
    }
    const ids=S.units.filter(u=>E.alive(u)&&inMissionArea(u)&&u.side===S.active).map(u=>u.id);
-   let batchEvs=[];
-   for(let i=0;i<ids.length;i++){
-    if(E.checkOutcome(S))break;
-    E.aiStep(S,ids[i]);
-    const stepEvs=E.drainEvents(S);
-    if(stepEvs.length)batchEvs.push(...stepEvs);
-    if(i%8===7||i===ids.length-1){
-     if(batchEvs.length){
-      renderFog();renderUnits();
-      processEngineEvents(batchEvs,{isAi:true});
-      batchEvs=[];
-     }
-     await new Promise(resolve=>setTimeout(resolve,0));
-    }
+   for(let i=0;i<ids.length&&!S.result;){
+    const packet=await run({kind:'units',ids:ids.slice(i,i+8)});
+    i+=packet.consumed;
+    renderFog();renderUnits();
+    processEngineEvents(packet.events,{isAi:true});
+    $('actionHint').textContent='敌军行动中… '+i+' / '+ids.length;
+    await yieldToBrowser();
+    if(!packet.consumed)break;
    }
-   if(batchEvs.length){renderFog();renderUnits();processEngineEvents(batchEvs,{isAi:true});}
-   if(!E.checkOutcome(S)){
-    E.endTurn(S);
-    const aiEndEvs=E.drainEvents(S);
-    if(aiEndEvs.length)processEngineEvents(aiEndEvs,{isAi:true});
+   if(!S.result){
+    const packet=await run({kind:'endTurn'});
+    renderFog();renderUnits();
+    processEngineEvents(packet.events,{isAi:true});
     if(S.lastTurnReport){S.turnReports=S.turnReports||{};S.turnReports[S.lastTurnReport.side]=S.lastTurnReport;}
    }
   }
   save();
+ }catch(error){
+  save();
+  turnError=true;
+  console.error('Turn calculation failed',error);
  }finally{
-  busy=false;cancelAction();refresh();
+  executor.close();busy=false;cancelAction();refresh();
+  if(turnError)$('actionHint').textContent='回合计算中断，已保留当前进度，可继续推进回合。';
  }
 }
 
@@ -1243,7 +1300,7 @@ map.onpointerover=e=>{
 };
 map.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?.86:1.16,pointIn(map,e));},{passive:false});
 map.onpointerdown=e=>{if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y,scale:map.getScreenCTM().a,moved:false};};
-map.onpointermove=e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>5){drag.moved=true;map.classList.add('dragging');map.setPointerCapture(e.pointerId);view.x=drag.vx-dx/drag.scale;view.y=drag.vy-dy/drag.scale;applyView();}};
+map.onpointermove=e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>5){drag.moved=true;map.classList.add('dragging');map.setPointerCapture(e.pointerId);view.x=drag.vx-dx/drag.scale;view.y=drag.vy-dy/drag.scale;scheduleView();}};
 const endDrag=e=>{suppressClick=!!drag?.moved;drag=null;map.classList.remove('dragging');if(map.hasPointerCapture(e.pointerId))map.releasePointerCapture(e.pointerId);};
 map.onpointerup=endDrag;
 map.onpointercancel=endDrag;
