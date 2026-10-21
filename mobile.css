@@ -1,0 +1,108 @@
+.mobile-only{display:none}
+body.mobile-layout [hidden]{display:none!important}
+body.mobile-layout{height:100vh;height:100dvh;overflow:hidden;margin:0;padding:0;background:#f6f3e8;color:#27372f;display:flex;flex-direction:column}
+body.mobile-layout .mobile-only{display:block}
+body.mobile-layout header{height:44px;min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;padding-top:env(safe-area-inset-top);padding-left:calc(12px + env(safe-area-inset-left));padding-right:calc(12px + env(safe-area-inset-right));border-bottom:1px solid #cfcebd;box-sizing:content-box;background:#f6f3e8}
+body.mobile-layout header nav{display:none}
+body.mobile-layout header button#mobileMenuOpen{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:6px 12px;border:1px solid #cfcebd;background:#fff;color:#27372f;border-radius:4px;font-size:14px;box-sizing:border-box}
+body.mobile-layout main{flex:1;min-height:0;display:flex;flex-direction:column;padding:0;margin:0;overflow:hidden}
+body.mobile-layout main>.heading,body.mobile-layout main>.status-strip,body.mobile-layout main>.command-bar,body.mobile-layout main>.controls,body.mobile-layout footer{display:none}
+body.mobile-layout #mobileTopBar{display:flex;align-items:center;gap:8px;height:44px;min-height:44px;padding:0 8px;padding-left:calc(8px + env(safe-area-inset-left));padding-right:calc(8px + env(safe-area-inset-right));border-bottom:1px solid #cfcebd;background:#f6f3e8;box-sizing:border-box}
+body.mobile-layout #mobileTopBar strong#mobilePhase{font-size:14px;white-space:nowrap;margin-right:auto}
+body.mobile-layout #mobileTopBar button{min-height:44px;min-width:44px;padding:6px 12px;border:1px solid #cfcebd;background:#fff;color:#27372f;border-radius:4px;font-size:14px;box-sizing:border-box}
+body.mobile-layout #mobileTopBar button#mobileEndTurn{background:#27372f;color:#fff;border-color:#27372f}
+body.mobile-layout .workbench,body.mobile-layout.expanded .workbench{flex:1;min-height:0;display:flex;flex-direction:column;padding:0;margin:0}
+body.mobile-layout .workbench>aside{display:none}
+body.mobile-layout section.map-panel,body.mobile-layout.expanded section.map-panel{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;box-shadow:none;border:none;margin:0;padding:0;position:static}
+body.mobile-layout .map-toolbar{height:44px;min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;border-bottom:1px solid #cfcebd;box-sizing:border-box;background:#f6f3e8}
+body.mobile-layout .map-toolbar button,body.mobile-layout .map-toolbar div button{min-height:44px;min-width:44px;font-size:14px}
+body.mobile-layout #fullscreen{display:none}
+body.mobile-layout #mapWrap{position:relative;flex:1;min-height:0;overflow:hidden;background:#ece8d9}
+body.mobile-layout #mapWrap SVG#map{width:100%;height:100%;display:block;touch-action:none}
+body.mobile-layout #mobileHint{position:absolute;top:8px;left:8px;right:8px;max-height:2.8em;line-height:1.4;font-size:12px;background:rgba(246,243,232,0.9);color:#27372f;padding:4px 8px;border-radius:4px;border:1px solid #cfcebd;pointer-events:none;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+body.mobile-layout .map-panel .legend,body.mobile-layout .map-foot,body.mobile-layout #mapWrap .map-hint,body.mobile-layout #mapWrap .north{display:none}
+body.mobile-layout #attackPanel{position:absolute;bottom:8px;left:8px;right:8px;background:#f6f3e8;border:1px solid #cfcebd;border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;z-index:20}
+body.mobile-layout #attackPanel button{min-height:44px;font-size:14px}
+body.mobile-layout #mobileUnitBar{display:none;background:#f6f3e8;border-top:1px solid #cfcebd;padding:6px 8px;padding-bottom:calc(6px + env(safe-area-inset-bottom));padding-left:calc(8px + env(safe-area-inset-left));padding-right:calc(8px + env(safe-area-inset-right));flex-direction:column;gap:4px;box-sizing:border-box;max-height:150px;overflow-y:auto;overflow-x:hidden}
+body.mobile-layout #mobileUnitBar.is-selected,body.mobile-layout #mobileUnitBar:not([hidden]):not(.is-empty){display:flex}
+body.mobile-layout #mobileUnitBar .mobile-unit-heading{display:flex;align-items:center;justify-content:space-between;min-height:28px}
+body.mobile-layout #mobileUnitBar .mobile-unit-heading strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:8px}
+body.mobile-layout #mobileUnitBar .mobile-unit-heading button[data-mobile-command="collapse"]{min-height:32px;min-width:44px;padding:2px 8px;font-size:13px}
+body.mobile-layout #mobileUnitBar .mobile-unit-stats{margin:0;font-size:12px;line-height:1.3;color:#49594f}
+body.mobile-layout #mobileUnitBar .mobile-unit-actions{display:flex;flex-wrap:wrap;gap:6px}
+body.mobile-layout #mobileUnitBar .mobile-unit-actions button,body.mobile-layout #mobileUnitBar button.mobile-auto{min-height:44px;flex:1 1 44px;min-width:0;padding:4px 6px;font-size:14px;border:1px solid #cfcebd;background:#fff;color:#27372f;border-radius:4px;box-sizing:border-box}
+body.mobile-layout #mobileUnitBar button.mobile-auto{max-height:44px;flex:0 0 auto}
+body.mobile-layout #mobileUnitBar .mobile-unit-message{margin:0;font-size:12px;color:#666}
+body.mobile-layout #mobileUnitBar.collapsed>*{display:none}
+body.mobile-layout #mobileUnitBar.collapsed{max-height:44px;padding:0 8px;padding-bottom:env(safe-area-inset-bottom);display:flex;justify-content:center;align-items:center}
+body.mobile-layout #mobileUnitBar.collapsed button.mobile-unit-reopen{display:inline-flex;align-items:center;justify-content:center;width:100%;min-height:44px;font-size:14px;border:none;background:transparent;color:#27372f}
+body.mobile-layout #mobileMenuDialog:not([open]),body.mobile-layout #mobileInfoDialog:not([open]){display:none}
+body.mobile-layout dialog#mobileMenuDialog[open],body.mobile-layout dialog#mobileInfoDialog[open]{position:fixed;inset:0;margin:auto;width:calc(100% - 16px);max-width:540px;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);padding:0;border:1px solid #cfcebd;border-radius:8px;background:#f6f3e8;color:#27372f;box-shadow:0 8px 24px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;z-index:100}
+body.mobile-layout dialog::backdrop{background:rgba(0,0,0,0.5)}
+body.mobile-layout #mobileMenuDialog .dialog-content,body.mobile-layout #mobileInfoDialog .dialog-content{display:block;max-height:inherit;min-height:0;overflow:auto;padding:0}
+body.mobile-layout .mobile-dialog-heading{height:44px;min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #cfcebd;background:#f6f3e8}
+body.mobile-layout .mobile-dialog-heading h2{margin:0;font-size:16px}
+body.mobile-layout .mobile-dialog-heading button{min-height:44px;min-width:44px;font-size:16px;border:none;background:transparent;color:#27372f}
+body.mobile-layout #mobileMenuBody,body.mobile-layout #mobileInfoBody{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:12px;display:flex;flex-direction:column;gap:12px}
+body.mobile-layout #mobileMenuBody nav,body.mobile-layout #mobileMenuBody .command-bar,body.mobile-layout #mobileMenuBody .controls,body.mobile-layout #mobileMenuBody .legend{display:flex!important;position:static!important;flex-direction:column;width:100%;box-sizing:border-box}
+body.mobile-layout #mobileMenuBody button,body.mobile-layout #mobileMenuBody select{min-height:44px;font-size:16px;box-sizing:border-box}
+body.mobile-layout #mobileInfoBody aside{display:block!important;position:static!important;min-height:0!important;max-height:none!important;overflow:visible!important;width:100%!important;border:none!important;box-shadow:none!important;padding:0!important}
+body.mobile-layout #mobileInfoBody .detail-art{display:none!important}
+body.mobile-layout input,body.mobile-layout select{font-size:16px}
+body.mobile-layout button,body.mobile-layout label{font-size:14px}
+@media (max-height:500px) and (orientation:landscape){body.mobile-layout header{height:38px;min-height:38px}body.mobile-layout #mobileUnitBar .mobile-unit-stats{display:none}}
+/* Integration adjustments: keep commands compact and native dialogs scrollable. */
+body.mobile-layout header{color:#27372f;flex-shrink:0}
+body.mobile-layout .brand{font-size:15px;letter-spacing:1px;gap:8px;min-width:0}
+body.mobile-layout .brand small,body.mobile-layout .brand-mark{display:none}
+body.mobile-layout #mobileMenuOpen{border:0;background:transparent}
+body.mobile-layout .map-toolbar>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:12px}
+body.mobile-layout .map-toolbar>div{flex-shrink:0}
+body.mobile-layout #mapWrap{height:0}
+body.mobile-layout #mobileUnitBar{flex-shrink:0;max-height:40dvh}
+body.mobile-layout #mobileUnitBar .mobile-unit-heading{min-width:0}
+body.mobile-layout #mobileUnitBar .mobile-unit-heading button[data-mobile-command="collapse"]{min-height:44px;flex-shrink:0;border:0;background:transparent}
+body.mobile-layout #mobileUnitBar .mobile-unit-heading strong{font-size:13px}
+body.mobile-layout #mobileUnitBar .mobile-unit-actions button{white-space:nowrap}
+body.mobile-layout #mobileUnitBar .mobile-unit-actions button[data-mobile-command="heal"],body.mobile-layout #mobileUnitBar .mobile-unit-actions button[data-mobile-command="resupply"]{background:#354b3e;color:#fff;flex-grow:2}
+body.mobile-layout #mobileUnitBar button.mobile-auto{font-size:12px;min-height:36px;background:transparent;border:0;text-align:left}
+body.mobile-layout #mobileUnitBar.collapsed{align-items:stretch;max-height:none}
+body.mobile-layout #attackPanel{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
+body.mobile-layout #attackPanel>div{grid-column:1/-1;max-height:25dvh;overflow:auto}
+body.mobile-layout #attackPanel strong{font-size:13px}
+body.mobile-layout #attackPanel p{font-size:12px;line-height:1.4}
+body.mobile-layout #mobileHint:empty{display:none}
+body.mobile-layout #mobileHint{right:12px;max-height:3.5em;font-size:11px}
+body.mobile-layout #mobileMenuBody,body.mobile-layout #mobileInfoBody{display:block;overflow:visible;padding:12px}
+body.mobile-layout .mobile-dialog-heading{position:sticky;top:0;z-index:1}
+body.mobile-layout #mobileMenuBody nav{color:#27372f;align-items:stretch;gap:8px}
+body.mobile-layout #mobileMenuBody nav button{color:#27372f}
+body.mobile-layout #mobileMenuBody .header-settings{flex-wrap:wrap;gap:8px;justify-content:flex-start}
+body.mobile-layout #mobileMenuBody .command-bar{align-items:stretch;gap:8px;padding:12px 0;max-width:none;margin:0;left:auto;bottom:auto}
+body.mobile-layout #mobileMenuBody .command-bar select{max-width:none;width:100%}
+body.mobile-layout #mobileMenuBody #phase,body.mobile-layout #mobileMenuBody #nextReady,body.mobile-layout #mobileMenuBody #endTurn,body.mobile-layout #mobileMenuBody .command-hint{display:none}
+body.mobile-layout #mobileMenuBody .controls{align-items:stretch}
+body.mobile-layout #mobileMenuBody .layers{display:grid;gap:8px;font-size:14px}
+body.mobile-layout #mobileMenuBody .layers label{min-height:44px}
+body.mobile-layout #mobileMenuBody .legend{flex-direction:row;align-items:flex-start;gap:12px}
+body.mobile-layout #mobileMenuBody .air-tools{display:flex;flex-wrap:wrap;width:100%}
+body.mobile-layout #mobileInfoBody .filters input,body.mobile-layout #mobileInfoBody .filters select{min-height:44px;font-size:16px}
+body.mobile-layout #mobileInfoBody .detail-actions button,body.mobile-layout #mobileInfoBody #roster button{min-height:44px;font-size:13px}
+body.mobile-layout dialog .dialog-content{padding:18px;overflow:auto;max-height:80dvh}
+body.mobile-layout dialog button{min-height:44px}
+@media(max-height:500px) and (orientation:landscape){
+ body.mobile-layout header{height:44px;min-height:44px}
+ body.mobile-layout #mobileUnitBar{position:absolute;right:8px;bottom:8px;width:min(340px,48vw);max-height:50dvh;z-index:8;box-shadow:0 3px 15px #0003}
+ body.mobile-layout #mobileUnitBar .mobile-unit-heading{min-height:32px}
+ body.mobile-layout #mobileTopBar::after{content:none}
+}
+
+body.mobile-layout main,body.mobile-layout .workbench,body.mobile-layout section.map-panel{width:100%;align-items:stretch}
+
+
+body.mobile-layout #mobileLandscapeMenuOpen{display:none}
+@media(max-height:500px) and (orientation:landscape){
+ body.mobile-layout header{display:none}
+ body.mobile-layout #mobileLandscapeMenuOpen{display:inline-flex;align-items:center;justify-content:center}
+ body.mobile-layout #mobileTopBar{padding-top:env(safe-area-inset-top);height:calc(44px + env(safe-area-inset-top))}
+}

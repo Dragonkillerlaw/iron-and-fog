@@ -1,12 +1,13 @@
 {
   "name": "iron-and-fog",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "description": "Eastern Front hex tactics game",
   "scripts": {
     "start": "node serve.cjs",
     "test": "node test-barbarossa-tactics.cjs && node test-iron-fog.cjs && node test-missions.cjs && node test-ai.cjs && node test-progress.cjs && node test-effects.cjs",
-    "test:turn-worker": "node test-turn-worker.cjs"
+    "test:turn-worker": "node test-turn-worker.cjs",
+    "test:map-input": "node test-map-input.cjs"
   },
   "engines": {
     "node": ">=18"

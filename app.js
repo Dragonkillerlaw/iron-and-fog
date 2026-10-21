@@ -34,7 +34,8 @@ function loadSave(m=currentMode){
 
 let S=loadSave(currentMode);
 let perspective='de',actionMode=null,busy=false,pendingTarget=null;let sight=E.vision(S,'de');
-let view={...D.regions[0].view},selected=null,side='all',type='all',query='',drag=null,suppressClick=false;
+let view={...D.regions[0].view},selected=null,side='all',type='all',query='',suppressClick=false;
+let mobileLayout=false,mobileCollapsed=false,mobileUnitId=null;
 let undoSnapshot=null; // serialize string before move
 let undoDisabledReason='';
 let humanTurnReport=null;
@@ -72,7 +73,10 @@ function buildMap(){
  $('minimap').innerHTML=mini+'<g id="miniFog"></g><g id="miniUnits"></g><rect id="miniView" fill="#ffffff10" stroke="#fff8dc" stroke-width="18" pointer-events="none"/>';
 }
 
+function cameraBounds(){return S.mode==='tutorial'&&S.missionView?S.missionView:{x:0,y:0,w:D.board.width,h:D.board.height};}
+function clampInputView(next){return window.BARB_MAP_INPUT.clampCamera(next,cameraBounds(),mobileLayout?320:850,mobileLayout?200:620);}
 function clampView(){
+ if(mobileLayout){view=clampInputView(view);return;}
  if(S.mode==='tutorial'&&S.missionView){
   const mv=S.missionView;
   view.w=Math.max(450,Math.min(mv.w,view.w));
@@ -96,8 +100,8 @@ function setRegion(id){
  $('regions').querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.region===id));
  applyView();renderUnits();
 }
-function focusUnit(u){const p=D.position(u.q,u.r);view={x:p.x-740,y:p.y-565,w:1480,h:1130};$('viewName').textContent=group(u).area;$('regions').querySelectorAll('button').forEach(b=>b.classList.remove('active'));applyView();renderUnits();}
-function zoom(f,point){const old={...view},maxW=S.mode==='tutorial'&&S.missionView?S.missionView.w:D.board.width,w=Math.max(450,Math.min(maxW,view.w*f)),ratio=w/view.w,maxH=S.mode==='tutorial'&&S.missionView?S.missionView.h:D.board.height,h=Math.max(320,Math.min(maxH,view.h*ratio));const px=point?Math.max(0,Math.min(1,(point.x-view.x)/view.w)):.5,py=point?Math.max(0,Math.min(1,(point.y-view.y)/view.h)):.5;view={x:old.x+px*(old.w-w),y:old.y+py*(old.h-h),w,h};applyView();}
+function focusUnit(u){const p=D.position(u.q,u.r),rect=$('mapWrap').getBoundingClientRect(),w=mobileLayout?700:1480,h=mobileLayout?w*rect.height/Math.max(1,rect.width):1130;view={x:p.x-w/2,y:p.y-h/2,w,h};$('viewName').textContent=group(u).area;$('regions').querySelectorAll('button').forEach(b=>b.classList.remove('active'));applyView();renderUnits();}
+function zoom(f,point){const old={...view},maxW=S.mode==='tutorial'&&S.missionView?S.missionView.w:D.board.width,w=Math.max(mobileLayout?320:450,Math.min(maxW,view.w*f)),ratio=w/view.w,maxH=S.mode==='tutorial'&&S.missionView?S.missionView.h:D.board.height,h=Math.max(mobileLayout?200:320,Math.min(maxH,view.h*ratio));const px=point?Math.max(0,Math.min(1,(point.x-view.x)/view.w)):.5,py=point?Math.max(0,Math.min(1,(point.y-view.y)/view.h)):.5;view={x:old.x+px*(old.w-w),y:old.y+py*(old.h-h),w,h};applyView();}
 function pointIn(svg,e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse());}
 function shortName(u){return u.name.replace('装甲集群 · ','').replace('集团军 · ','军·').replace('第','').replace('机械化军 · ','机·').replace(' · 指挥部',' HQ').replace('西方面军后方 · ','后方·');}
 
@@ -248,6 +252,7 @@ function renderUnits(){
  renderBattleStatsPanel();
  renderTurnReport();
  checkAndShowOutcomeDialog();
+ renderMobileControls();
 }
 
 // Three compound paths replace thousands of fog polygons in both maps.
@@ -354,7 +359,7 @@ function renderMoves(){
   const nodes=actionMode?E.ring(u,1).filter(p=>!E.abilityReason(S,u,actionMode,p)):[...E.reachable(S,u,true).values()].filter(p=>p.path.length);
   for(const p of nodes){
    const xy=D.position(p.q,p.r);
-   out+=`<polygon points="${poly(xy.x,xy.y,31)}" fill="${actionMode?'#dfb24d33':'#b7d99444'}" stroke="${actionMode?'#cf9d35':'#9cbd77'}" stroke-width="3"/>`;
+   out+=`<polygon points="${poly(xy.x,xy.y,31)}" fill="${actionMode&&!['heal','resupply'].includes(actionMode)?'#dfb24d33':'#b7d99444'}" stroke="${actionMode&&!['heal','resupply'].includes(actionMode)?'#cf9d35':'#9cbd77'}" stroke-width="3"/>`;
   }
  }
  if(controllable(u)&&!actionMode)for(const enemy of S.units.filter(v=>visible(v)&&v.side!==u.side&&!E.attackReason(S,u,v))){
@@ -447,17 +452,11 @@ function renderDetail(){
  }
  $('detail').querySelectorAll('[data-action]').forEach(b=>{
   b.disabled=u.acted||busy||isGameFinished();
-  b.onclick=()=>{
-   cancelAction();
-   actionMode=b.dataset.action;
-   $('actionHint').textContent=({heal:'点击相邻友军步兵进行救护',resupply:'点击相邻友军补给或维修',trench:'点击金色格修筑堑壕',mine:'点击金色空格铺设雷区',clear:'点击相邻已发现雷区排雷',bridge:'点击相邻河格：架桥需2份材料，2轮通步兵、3轮通重装备'})[actionMode];
-   $('cancelAction').hidden=false;
-   renderMoves();
-  };
+  b.onclick=()=>beginAbility(b.dataset.action);
  });
 }
 
-function showUnit(id,focus=false){const u=S.units.find(u=>u.id===id);if(!u||!visible(u))return;selected=id;cancelAction();renderDetail();if(focus)focusUnit(u);else renderUnits();renderRoster();renderMoves();}
+function showUnit(id,focus=false){if(mobileLayout){mobileCollapsed=false;closeMobilePanels();}const u=S.units.find(u=>u.id===id);if(!u||!visible(u))return;selected=id;cancelAction();renderDetail();if(focus)focusUnit(u);else renderUnits();renderRoster();renderMoves();}
 function cancelAction(){
  actionMode=null;pendingTarget=null;
  if($('attackPanel'))$('attackPanel').hidden=true;
@@ -792,6 +791,7 @@ function countPendingAdvances(){
 
 function requestEndTurn(){
  if(busy||isGameFinished())return;
+ closeMobilePanels();
  const isOpponentTurn=perspective!=='god'&&perspective!==S.active;
  if(isOpponentTurn){
   executeNextTurn();
@@ -933,6 +933,7 @@ function renderTarget(){
  }
  if(pendingTarget?.kind==='advance')html=html.replaceAll('#e15b3c','#329c87').replaceAll('#d6423226','#55bfaa33');
  $('targetOverlay').innerHTML=html;
+ renderMobileControls();
 }
 
 function panel(title,body){
@@ -1216,6 +1217,108 @@ function restartCurrentMode(){
  refresh();
 }
 
+
+function closeMobilePanels(){
+ for(const id of ['mobileMenuDialog','mobileInfoDialog'])if($(id)?.open)$(id).close();
+}
+function openMobilePanel(id){
+ closeMobilePanels();$(id).showModal();
+ if(id==='mobileInfoDialog'&&selected)$('detail').scrollIntoView({block:'start'});
+}
+function beginAbility(action){
+ const u=S.units.find(u=>u.id===selected);
+ if(!controllable(u)||u.acted)return;
+ clearUndo();cancelAction();actionMode=action;closeMobilePanels();
+ const targets=E.ring(u,1).filter(p=>!E.abilityReason(S,u,action,p));
+ $('actionHint').textContent=targets.length?({heal:'点选绿色范围内的友军步兵进行救护',resupply:'点选绿色范围内的友军补给；坦克同时维修',trench:'点选金色格修筑堑壕',mine:'点选金色空格铺设雷区',clear:'点选相邻已发现雷区排雷',bridge:'点选相邻河格：2轮通步兵，3轮通坦克'})[action]:({heal:'附近没有可救护的友军，请先移动靠近需要救护的部队。',resupply:'附近没有需要补给或维修的友军，请先移动靠近。'})[action]||'当前没有可执行此工程的地块，请检查物资和相邻地形。';
+ renderMoves();
+}
+function updateMobileHint(){
+ const hint=$('actionHint').textContent,defaultHint=hint.startsWith('指挥')||hint.startsWith('上帝视角');
+ $('mobileHint').textContent=busy||actionMode||pendingTarget||!defaultHint?hint:selected?'点绿色格移动 · 点敌军预览攻击':'单指拖动 · 双指缩放 · 点选部队';
+}
+function renderMobileControls(){
+ const bar=$('mobileUnitBar');if(!bar)return;
+ updateMobileHint();
+ $('mobilePhase').textContent=$('phase').textContent;
+ $('mobileEndTurn').textContent=S.active===perspective||perspective==='god'?'结束回合':'推进敌军';
+ $('mobileEndTurn').disabled=busy||isGameFinished();
+ $('mobileNextReady').disabled=$('nextReady').disabled;
+ $('mobileNextReady').title=$('nextReady').textContent;
+ const u=S.units.find(u=>u.id===selected);
+ bar.hidden=!mobileLayout||!u||!visible(u)||busy||!!pendingTarget;
+ if(bar.hidden)return;
+ if(mobileUnitId!==u.id){mobileUnitId=u.id;mobileCollapsed=false;}
+ bar.classList.toggle('collapsed',mobileCollapsed);
+ const button=(cmd,label,disabled=false,extra='')=>'<button type="button" data-mobile-command="'+cmd+'" '+(disabled?'disabled':'')+' '+extra+'>'+label+'</button>';
+ if(mobileCollapsed){bar.innerHTML=button('expand','部队指令 · '+esc(E.profiles[u.role].name),false,'class="mobile-unit-reopen"');return;}
+ let buttons='',auto='';
+ const own=controllable(u);
+ if(actionMode){
+  bar.innerHTML='<p class="mobile-unit-message">'+esc($('actionHint').textContent)+'</p><div class="mobile-unit-actions">'+button('cancel','取消指令')+'</div>';return;
+ }
+ if(own){
+  if(u.role==='medic')buttons+=button('heal','救护',u.acted||u.stock<1);
+  if(u.role==='supply')buttons+=button('resupply','补给 / 维修',u.acted||u.stock<1);
+  if(u.role==='engineer')for(const [a,label]of [['trench','挖壕'],['mine','布雷'],['clear','排雷'],['bridge','架桥']])buttons+=button(a,label,u.acted);
+  if(u.advance)buttons+=button('advance','突进',!!E.advanceReason(S,u));
+  if(!u.acted)buttons+=button('wait','待命');
+  if(['medic','supply'].includes(u.role))auto=button('auto',u.autoSupport?'自动支援：开':'自动支援：关',false,'class="mobile-auto" aria-pressed="'+u.autoSupport+'"');
+ }
+ buttons+=button('details','详情');
+ if(undoSnapshot)buttons+=button('undo','撤销',busy);
+ bar.innerHTML='<div class="mobile-unit-heading"><strong>'+esc(u.name)+'</strong>'+button('collapse','收起')+'</div><p class="mobile-unit-stats">'+esc(E.profiles[u.role].name)+' · 兵力 '+u.hp+'/'+u.maxHp+' · 士气 '+u.morale+(u.role==='armor'?' · 油 '+u.fuel:['medic','supply','engineer'].includes(u.role)?' · 物资 '+u.stock:' · 弹药 '+u.ammo)+'</p><div class="mobile-unit-actions">'+buttons+'</div>'+auto;
+}
+function setupMobileLayout(){
+ const small=matchMedia('(max-width:820px)'),landscape=matchMedia('(pointer:coarse) and (max-width:1100px) and (max-height:600px)');
+ const moves=[['header nav','mobileMenuBody'],['.command-bar','mobileMenuBody'],['.controls','mobileMenuBody'],['#legend','mobileMenuBody'],['.workbench > aside','mobileInfoBody']].map(([selector,dest])=>{
+  const node=document.querySelector(selector),anchor=document.createComment('mobile layout slot');node.before(anchor);return {node,anchor,dest};
+ });
+ const update=()=>{
+  const enabled=small.matches||landscape.matches;
+  if(enabled===mobileLayout)return;
+  closeMobilePanels();mobileLayout=enabled;
+  document.body.classList.toggle('mobile-layout',enabled);
+  if(enabled&&document.body.classList.contains('expanded'))expanded();
+  for(const {node,anchor,dest}of moves)if(enabled)$(dest).appendChild(node);else anchor.after(node);
+  if(enabled&&view.w>2000){
+   const u=S.units.find(u=>E.alive(u)&&u.side===(perspective==='god'?S.active:perspective)&&E.isCombat(u));
+   if(u){const p=D.position(u.q,u.r);view={x:p.x-400,y:p.y-500,w:800,h:1000};}
+  }
+  renderMobileControls();requestAnimationFrame(()=>{resizeMobileCamera();applyView();});
+ };
+ small.addEventListener('change',update);landscape.addEventListener('change',update);
+ $('mobileMenuOpen').onclick=()=>openMobilePanel('mobileMenuDialog');
+ $('mobileLandscapeMenuOpen').onclick=()=>openMobilePanel('mobileMenuDialog');
+ $('mobileInfoOpen').onclick=()=>openMobilePanel('mobileInfoDialog');
+ for(const b of document.querySelectorAll('[data-close-mobile]'))b.onclick=()=>$(b.dataset.closeMobile).close();
+ $('mobileEndTurn').onclick=requestEndTurn;
+ $('mobileNextReady').onclick=selectNextReadyUnit;
+ $('mobileUnitBar').onclick=e=>{
+  const b=e.target.closest('[data-mobile-command]');if(!b||b.disabled)return;
+  const cmd=b.dataset.mobileCommand,u=S.units.find(u=>u.id===selected);
+  if(cmd==='details'){renderDetail();openMobilePanel('mobileInfoDialog');return;}
+  if(cmd==='collapse'||cmd==='expand'){mobileCollapsed=cmd==='collapse';renderMobileControls();return;}
+  if(cmd==='cancel'){cancelAction();renderMoves();return;}
+  if(cmd==='undo'){performUndo();return;}
+  if(!controllable(u))return;
+  if(cmd==='auto'){clearUndo();E.setAuto(S,u.id,!u.autoSupport);save();renderDetail();renderMobileControls();return;}
+  if(cmd==='advance'){prepareAdvance(u);return;}
+  if(cmd==='wait'){clearUndo();cancelAction();perform(E.waitUnit(S,u.id));return;}
+  beginAbility(cmd);
+ };
+ new MutationObserver(updateMobileHint).observe($('actionHint'),{childList:true,characterData:true,subtree:true});
+ // Keep the camera useful when the phone rotates or the compact commands open.
+ new ResizeObserver(()=>{if(mobileLayout)resizeMobileCamera();}).observe($('mapWrap'));
+ update();
+}
+function resizeMobileCamera(){
+ if(!mobileLayout)return;
+ const rect=$('mapWrap').getBoundingClientRect();if(rect.width<1||rect.height<1)return;
+ const cy=view.y+view.h/2,h=view.w*rect.height/rect.width;
+ view={...view,y:cy-h/2,h};applyView();
+}
+
 function onMapClick(e){if(suppressClick){suppressClick=false;return;}const el=e.target.closest('[data-unit],[data-city],[data-q]');if(el)activate(el);}
 function onKey(e){if(['Enter',' '].includes(e.key)){const el=e.target.closest('[data-unit],[data-city]');if(el){e.preventDefault();activate(el);}}if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();view.x+=(e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0)*view.w*.08;view.y+=(e.key==='ArrowDown'?1:e.key==='ArrowUp'?-1:0)*view.h*.08;applyView();}}
 
@@ -1241,6 +1344,7 @@ $('cancelAttack').onclick=()=>{
 for(const kind of ['recon','strike'])$('air'+kind).onclick=()=>{
  if(busy||isGameFinished())return;
  cancelAction();selected=null;
+ closeMobilePanels();
  actionMode=kind==='recon'?'airRecon':'airStrike';
  $('cancelAction').hidden=false;
  $('actionHint').textContent='点击地图选择'+(kind==='recon'?'侦察区域':'已发现的空袭目标')+'，再确认派遣';
@@ -1269,6 +1373,7 @@ $('cancelEndTurn').onclick=()=>$('endTurnDialog').close();
 
 $('cancelAction').onclick=()=>{cancelAction();renderMoves();};
 $('reset').onclick=()=>{
+ closeMobilePanels();
  $('restartPrompt').textContent=`恢复初始部署，仅清空当前【${S.mode==='tutorial'?'入门教学':'完整战役'}】的战局进度。`;
  $('restartDialog').showModal();
 };
@@ -1299,12 +1404,13 @@ map.onpointerover=e=>{
  }
 };
 map.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?.86:1.16,pointIn(map,e));},{passive:false});
-map.onpointerdown=e=>{if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y,scale:map.getScreenCTM().a,moved:false};};
-map.onpointermove=e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>5){drag.moved=true;map.classList.add('dragging');map.setPointerCapture(e.pointerId);view.x=drag.vx-dx/drag.scale;view.y=drag.vy-dy/drag.scale;scheduleView();}};
-const endDrag=e=>{suppressClick=!!drag?.moved;drag=null;map.classList.remove('dragging');if(map.hasPointerCapture(e.pointerId))map.releasePointerCapture(e.pointerId);};
-map.onpointerup=endDrag;
-map.onpointercancel=endDrag;
-map.onpointerleave=()=>{if(drag&&!drag.moved)drag=null;};
+window.BARB_MAP_INPUT.attach(map,{
+ getView:()=>{applyView();return view;},
+ setView:next=>{view=next;scheduleView();},
+ clamp:clampInputView,
+ onTap:target=>{const el=target.closest('[data-unit],[data-city],[data-q]');if(el)activate(el);},
+ onEnd:consumed=>{suppressClick=consumed;if(consumed)setTimeout(()=>{suppressClick=false;},400);}
+});
 
 $('minimap').onclick=e=>{const p=pointIn($('minimap'),e);view.x=p.x-view.w/2;view.y=p.y-view.h/2;applyView();};
 $('roster').onclick=e=>{const b=e.target.closest('[data-roster]');if(b)showUnit(b.dataset.roster,true);};
@@ -1318,6 +1424,7 @@ $('fit').onclick=()=>{
  }
 };
 function openArchiveDialog(){
+ closeMobilePanels();
  const container=$('archiveList');
  if(!container)return;
  const records=P?P.getArchiveRecords():[];
@@ -1363,10 +1470,11 @@ document.addEventListener('pointerdown',resumeSavedSound,{once:true});
 document.addEventListener('keydown',resumeSavedSound,{once:true});
 
 $('fullscreen').onclick=expanded;
-$('historyBtn').onclick=()=>$('history').showModal();
+$('historyBtn').onclick=()=>{closeMobilePanels();$('history').showModal();};
 $('closeHistory').onclick=()=>$('history').close();
 document.addEventListener('keydown',e=>{
  if(e.key==='Escape'){
+  if($('mobileMenuDialog').open||$('mobileInfoDialog').open){closeMobilePanels();return;}
   if($('archiveDialog')&&$('archiveDialog').open){$('archiveDialog').close();return;}
   if($('endTurnDialog').open){$('endTurnDialog').close();return;}
   if($('restartDialog').open){$('restartDialog').close();return;}
@@ -1379,6 +1487,8 @@ document.addEventListener('keydown',e=>{
 if(S.mode==='tutorial'&&S.missionView){
  view={...S.missionView};
 }
+setupMobileLayout();
+if(S.mode==='tutorial')$('viewName').textContent='布列斯特教学区';
 updateRegionsForMode();
 cancelAction();
 refresh();
