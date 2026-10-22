@@ -36,6 +36,7 @@ let S=loadSave(currentMode);
 let perspective='de',actionMode=null,busy=false,pendingTarget=null;let sight=E.vision(S,'de');
 let view={...D.regions[0].view},selected=null,side='all',type='all',query='',suppressClick=false;
 let mobileLayout=false,mobileCollapsed=false,mobileUnitId=null;
+let unitPickerContext=null;
 let undoSnapshot=null; // serialize string before move
 let undoDisabledReason='';
 let humanTurnReport=null;
@@ -356,10 +357,11 @@ function renderMoves(){
  const u=S.units.find(u=>u.id===selected);
  let out='';
  if(controllable(u)&&!u.acted){
-  const nodes=actionMode?E.ring(u,1).filter(p=>!E.abilityReason(S,u,actionMode,p)):[...E.reachable(S,u,true).values()].filter(p=>p.path.length);
+  const ability=actionMode&&actionMode!=='move';
+  const nodes=ability?E.ring(u,1).filter(p=>!E.abilityReason(S,u,actionMode,p)):[...E.reachable(S,u,true).values()].filter(p=>p.path.length);
   for(const p of nodes){
    const xy=D.position(p.q,p.r);
-   out+=`<polygon points="${poly(xy.x,xy.y,31)}" fill="${actionMode&&!['heal','resupply'].includes(actionMode)?'#dfb24d33':'#b7d99444'}" stroke="${actionMode&&!['heal','resupply'].includes(actionMode)?'#cf9d35':'#9cbd77'}" stroke-width="3"/>`;
+   out+=`<polygon points="${poly(xy.x,xy.y,31)}" fill="${ability&&!['heal','resupply'].includes(actionMode)?'#dfb24d33':'#b7d99444'}" stroke="${ability&&!['heal','resupply'].includes(actionMode)?'#cf9d35':'#9cbd77'}" stroke-width="3"/>`;
   }
  }
  if(controllable(u)&&!actionMode)for(const enemy of S.units.filter(v=>visible(v)&&v.side!==u.side&&!E.attackReason(S,u,v))){
@@ -458,6 +460,7 @@ function renderDetail(){
 
 function showUnit(id,focus=false){if(mobileLayout){mobileCollapsed=false;closeMobilePanels();}const u=S.units.find(u=>u.id===id);if(!u||!visible(u))return;selected=id;cancelAction();renderDetail();if(focus)focusUnit(u);else renderUnits();renderRoster();renderMoves();}
 function cancelAction(){
+ closeUnitPicker();
  actionMode=null;pendingTarget=null;
  if($('attackPanel'))$('attackPanel').hidden=true;
  if($('targetOverlay'))$('targetOverlay').innerHTML='';
@@ -746,12 +749,18 @@ function activate(el){
  if(isGameFinished()){if(target)showUnit(target.id);else showTerrain(p.q,p.r);return;}
  const current=S.units.find(u=>u.id===selected);
 
+ if(actionMode==='move'){
+  if(controllable(current))prepareMove(current,p);
+  return;
+ }
+
  if(actionMode==='airRecon'||actionMode==='airStrike'){
   clearUndo();
   prepareAir(p);
   return;
  }
  if(actionMode&&controllable(current)){
+  if(mobileLayout){prepareAbility(current,actionMode,p);return;}
   clearUndo();
   const action=actionMode;
   const result=E.ability(S,current.id,action,p.q,p.r);
@@ -773,6 +782,7 @@ function activate(el){
   return;
  }
  if(controllable(current)&&E.reachable(S,current,true).get(E.key(p.q,p.r))?.path.length){
+  if(mobileLayout){prepareMove(current,p);return;}
   cancelAction();
   handleMove(current, p);
   return;
@@ -932,17 +942,58 @@ function renderTarget(){
   }
  }
  if(pendingTarget?.kind==='advance')html=html.replaceAll('#e15b3c','#329c87').replaceAll('#d6423226','#55bfaa33');
+ if(pendingTarget?.kind==='move'){
+  const a=S.units.find(u=>u.id===pendingTarget.attacker),route=[a,...pendingTarget.path].map(p=>D.position(p.q,p.r));
+  const end=route[route.length-1];
+  html='<polyline points="'+route.map(p=>p.x+','+p.y).join(' ')+'" fill="none" stroke="#fff8de" stroke-width="8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/><polyline points="'+route.map(p=>p.x+','+p.y).join(' ')+'" fill="none" stroke="#286b56" stroke-width="4" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>';
+  for(const p of route.slice(1))html+='<circle cx="'+p.x+'" cy="'+p.y+'" r="6" fill="#fff8de" stroke="#286b56" stroke-width="2"/>';
+  html+='<polygon points="'+poly(end.x,end.y,33)+'" fill="#55bfaa55" stroke="#286b56" stroke-width="4" vector-effect="non-scaling-stroke"/><text x="'+end.x+'" y="'+(end.y+5)+'" text-anchor="middle" fill="#173d30" stroke="#fff8de" stroke-width="3" paint-order="stroke" font-size="18" font-weight="bold">'+coord(pendingTarget)+'</text>';
+ }
+ if(pendingTarget?.kind==='ability')html=html.replaceAll('#e15b3c','#2a6f97').replaceAll('#d6423226','#73bfd433');
  $('targetOverlay').innerHTML=html;
  renderMobileControls();
 }
 
 function panel(title,body){
- $('confirmAttack').textContent=pendingTarget?.kind==='advance'?'确认突进':'确认执行';
+ $('attackPanel').dataset.kind=pendingTarget?.kind||'';
+ $('attackPanel').setAttribute('aria-label','行动确认');
+ $('confirmAttack').textContent=pendingTarget?.kind==='move'?'确认移动':pendingTarget?.kind==='advance'?'确认突进':pendingTarget?.kind==='ground'?'确认攻击':'确认执行';
  $('cancelAttack').textContent=pendingTarget?.kind==='advance'?'原地停留':'取消';
  $('attackPanel').hidden=false;
  $('attackTitle').textContent=title;
  $('attackSummary').textContent=body;
  renderTarget();
+}
+function beginMove(u){
+ if(!controllable(u)||u.acted||u.mp<=0)return;
+ cancelAction();actionMode='move';closeMobilePanels();
+ $('actionHint').textContent='移动：点绿色格预览路线，再点「确认移动」；可拖动地图调整位置。';
+ renderMoves();
+}
+function prepareMove(u,p){
+ const route=E.reachable(S,u,true).get(E.key(p.q,p.r));
+ closeUnitPicker();pendingTarget=null;$('attackPanel').hidden=true;actionMode='move';
+ if(!route?.path.length){
+  $('actionHint').textContent=p.q===u.q&&p.r===u.r?'这是部队当前位置，请点绿色格选择目的地。':'此格无法到达，请选择绿色范围内的空地。';
+  renderMoves();return;
+ }
+ pendingTarget={kind:'move',attacker:u.id,q:p.q,r:p.r,path:route.path,cost:route.cost,origin:{q:u.q,r:u.r},round:S.round,active:S.active,mp:u.mp,fuel:u.fuel};
+ const knownMine=route.path.some(c=>{const f=S.forts[E.key(c.q,c.r)];return f?.type==='mine'&&f.side!==u.side&&E.fortVisible(S,f,perspective);});
+ const knownZoc=S.units.some(v=>E.alive(v)&&v.side!==u.side&&!['medic','supply'].includes(v.role)&&E.canSee(S,v,u.side)&&E.distance(v,p)<=1);
+ const unseen=perspective!=='god'&&route.path.some(c=>!sight.has(E.key(c.q,c.r)));
+ const warning=(knownMine?' · 已知雷区：触雷即停':knownZoc?' · 进入敌军控制区：停止移动':'')+(unseen?' · 含未侦察路段':'');
+ $('actionHint').textContent='路线已预览；可点其他格调整，确认后才会移动。';
+ panel(u.name+' → '+coord(p)+' · '+E.terrainName(p.q,p.r),'计划 '+route.path.length+'格 · 移动点 '+u.mp+' → '+(knownMine||knownZoc?0:u.mp-route.cost)+(u.role==='armor'?(knownMine?' · 燃油最多消耗 '+route.cost*5:' · 燃油 '+u.fuel+' → '+(u.fuel-route.cost*5)):'')+warning);
+ renderMoves();
+}
+function prepareAbility(u,action,p){
+ const reason=E.abilityReason(S,u,action,p);
+ if(reason){pendingTarget=null;$('attackPanel').hidden=true;$('actionHint').textContent=reason;renderTarget();return;}
+ const labels={heal:'救护',resupply:'补给 / 维修',trench:'挖壕',mine:'布雷',clear:'排雷',bridge:'架桥'};
+ const target=S.units.find(v=>visible(v)&&v.q===p.q&&v.r===p.r);
+ pendingTarget={kind:'ability',attacker:u.id,action,q:p.q,r:p.r,round:S.round,active:S.active};
+ $('actionHint').textContent='目标已选定；确认后执行，可点其他格更换目标。';
+ panel(labels[action]+' · '+coord(p),(['heal','resupply'].includes(action)&&target?target.name+' · 兵力 '+target.hp+'/'+target.maxHp:'施工位置：'+E.terrainName(p.q,p.r))+' · 消耗本队本回合行动');
 }
 function prepareAdvance(u){
  const reason=E.advanceReason(S,u);
@@ -983,9 +1034,21 @@ function animateFlight(kind,p){
 }
 async function confirmAttack(){
  if(busy||!pendingTarget)return;
- clearUndo();
  const target={...pendingTarget};
+ if(target.kind==='move'){
+  const u=S.units.find(u=>u.id===target.attacker);
+  const route=controllable(u)?E.reachable(S,u,true).get(E.key(target.q,target.r)):null;
+  if(!route?.path.length||S.round!==target.round||S.active!==target.active||u.q!==target.origin.q||u.r!==target.origin.r){cancelAction();renderMoves();$('actionHint').textContent='部队状态已变化，请重新选择目的地。';return;}
+  if(route.cost!==target.cost||u.mp!==target.mp||u.fuel!==target.fuel||JSON.stringify(route.path)!==JSON.stringify(target.path)){prepareMove(u,target);return;}
+  cancelAction();handleMove(u,target);return;
+ }
+ clearUndo();
  cancelAction();
+ if(target.kind==='ability'){
+  const u=S.units.find(u=>u.id===target.attacker);
+  if(!controllable(u)||S.round!==target.round||S.active!==target.active){renderMoves();return;}
+  perform(E.ability(S,u.id,target.action,target.q,target.r));return;
+ }
  if(target.kind==='advance'){
   perform(E.advance(S,target.attacker));
   return;
@@ -1219,7 +1282,45 @@ function restartCurrentMode(){
 
 
 function closeMobilePanels(){
+ closeUnitPicker();
  for(const id of ['mobileMenuDialog','mobileInfoDialog'])if($(id)?.open)$(id).close();
+}
+function closeUnitPicker(){
+ unitPickerContext=null;
+ document.body.classList.remove('picking-units');
+ if($('unitPicker'))$('unitPicker').hidden=true;
+ if($('pickOverlay'))$('pickOverlay').remove();
+}
+function showUnitPicker(units,point){
+ pendingTarget=null;$('attackPanel').hidden=true;renderTarget();
+ unitPickerContext={ids:units.map(u=>u.id),point,selected,actionMode};
+ const support=['heal','resupply'].includes(actionMode);
+ $('unitPickerTitle').textContent=support?'选择支援目标':'选择附近部队';
+ $('unitPickerList').innerHTML=units.map((u,i)=>'<button type="button" class="unit-pick" data-pick-unit="'+u.id+'"><span class="unit-pick-symbol '+u.side+'">'+(i+1)+'</span><span class="unit-pick-copy"><strong>'+esc(u.name)+'</strong><small>'+esc((u.side==='de'?'德军':'苏军')+' · '+E.profiles[u.role].name+' · '+coord(u)+' · 兵力 '+u.hp+'/'+u.maxHp+' · '+(u.acted?'已行动':'未行动'))+'</small></span></button>').join('');
+ $('unitPicker').hidden=false;$('unitPickerList').scrollTop=0;
+ document.body.classList.add('picking-units');
+ if($('pickOverlay'))$('pickOverlay').remove();
+ const scale=$('map').getScreenCTM().a;
+ $('map').insertAdjacentHTML('beforeend','<g id="pickOverlay" pointer-events="none">'+units.map((u,i)=>{const p=D.position(u.q,u.r);return '<g transform="translate('+p.x+' '+p.y+') scale('+(1/scale)+')"><circle r="11" fill="'+color(u.side)+'" stroke="#fff8de" stroke-width="2"/><text y="4" text-anchor="middle" fill="white" font-size="12" font-weight="bold">'+(i+1)+'</text></g>';}).join('')+'</g>');
+}
+function mobileMapTap(target,e){
+ if(busy)return;
+ const world=pointIn($('map'),e),cell=window.BARB_MAP_INPUT.nearestCell(world,D.board,D.position);
+ // Destination and engineering commands use the grid, never a nearby sprite.
+ if(actionMode&&!['heal','resupply'].includes(actionMode)){
+  if(cell&&inMissionArea(cell))activate({dataset:{q:cell.q,r:cell.r}});return;
+ }
+ const current=S.units.find(u=>u.id===selected),support=['heal','resupply'].includes(actionMode),matrix=$('map').getScreenCTM();
+ const candidates=S.units.filter(u=>visible(u)&&(!support||!E.abilityReason(S,current,actionMode,u)));
+ const points=candidates.map(u=>{const p=D.position(u.q,u.r);return {id:u.id,x:p.x*matrix.a+matrix.e,y:(p.y+8)*matrix.d+matrix.f,top:(p.y-40)*matrix.d+matrix.f,bottom:(p.y+13)*matrix.d+matrix.f};});
+ const near=window.BARB_MAP_INPUT.nearbyUnits(points,{x:e.clientX,y:e.clientY});
+ const directId=target.closest('[data-unit]')?.dataset.unit,direct=points.find(p=>p.id===directId);
+ if(direct&&!near.some(p=>p.id===direct.id)&&Math.hypot(direct.x-e.clientX,direct.y-e.clientY)<=52)near.push(direct);
+ const units=near.map(p=>candidates.find(u=>u.id===p.id));
+ if(units.length>1){showUnitPicker(units,world);return;}
+ closeUnitPicker();
+ if(units.length===1){activate({dataset:{unit:units[0].id}});return;}
+ if(cell&&inMissionArea(cell))activate({dataset:{q:cell.q,r:cell.r}});
 }
 function openMobilePanel(id){
  closeMobilePanels();$(id).showModal();
@@ -1235,7 +1336,7 @@ function beginAbility(action){
 }
 function updateMobileHint(){
  const hint=$('actionHint').textContent,defaultHint=hint.startsWith('指挥')||hint.startsWith('上帝视角');
- $('mobileHint').textContent=busy||actionMode||pendingTarget||!defaultHint?hint:selected?'点绿色格移动 · 点敌军预览攻击':'单指拖动 · 双指缩放 · 点选部队';
+ $('mobileHint').textContent=busy||actionMode||pendingTarget||!defaultHint?hint:selected?'点绿色格预览移动 · 密集区域可用「移动」精确选格':'单指拖动 · 双指缩放 · 部队密集时从卡片选择';
 }
 function renderMobileControls(){
  const bar=$('mobileUnitBar');if(!bar)return;
@@ -1258,6 +1359,7 @@ function renderMobileControls(){
   bar.innerHTML='<p class="mobile-unit-message">'+esc($('actionHint').textContent)+'</p><div class="mobile-unit-actions">'+button('cancel','取消指令')+'</div>';return;
  }
  if(own){
+  buttons+=button('move','移动',u.acted||u.mp<=0||(u.role==='armor'&&u.fuel<5));
   if(u.role==='medic')buttons+=button('heal','救护',u.acted||u.stock<1);
   if(u.role==='supply')buttons+=button('resupply','补给 / 维修',u.acted||u.stock<1);
   if(u.role==='engineer')for(const [a,label]of [['trench','挖壕'],['mine','布雷'],['clear','排雷'],['bridge','架桥']])buttons+=button(a,label,u.acted);
@@ -1267,7 +1369,7 @@ function renderMobileControls(){
  }
  buttons+=button('details','详情');
  if(undoSnapshot)buttons+=button('undo','撤销',busy);
- bar.innerHTML='<div class="mobile-unit-heading"><strong>'+esc(u.name)+'</strong>'+button('collapse','收起')+'</div><p class="mobile-unit-stats">'+esc(E.profiles[u.role].name)+' · 兵力 '+u.hp+'/'+u.maxHp+' · 士气 '+u.morale+(u.role==='armor'?' · 油 '+u.fuel:['medic','supply','engineer'].includes(u.role)?' · 物资 '+u.stock:' · 弹药 '+u.ammo)+'</p><div class="mobile-unit-actions">'+buttons+'</div>'+auto;
+ bar.innerHTML='<div class="mobile-unit-heading"><strong>'+esc(u.name)+'</strong>'+button('collapse','收起')+'</div><p class="mobile-unit-stats">'+esc(E.profiles[u.role].name)+' · '+coord(u)+' · 移动 '+u.mp+' · 兵力 '+u.hp+'/'+u.maxHp+(u.role==='armor'?' · 油 '+u.fuel:['medic','supply','engineer'].includes(u.role)?' · 物资 '+u.stock:' · 弹药 '+u.ammo)+'</p><div class="mobile-unit-actions">'+buttons+'</div>'+auto;
 }
 function setupMobileLayout(){
  const small=matchMedia('(max-width:820px)'),landscape=matchMedia('(pointer:coarse) and (max-width:1100px) and (max-height:600px)');
@@ -1294,6 +1396,18 @@ function setupMobileLayout(){
  for(const b of document.querySelectorAll('[data-close-mobile]'))b.onclick=()=>$(b.dataset.closeMobile).close();
  $('mobileEndTurn').onclick=requestEndTurn;
  $('mobileNextReady').onclick=selectNextReadyUnit;
+ $('unitPicker').onclick=e=>{
+  const context=unitPickerContext;
+  if(!context)return;
+  if(e.target.closest('[data-pick-close]')){closeUnitPicker();return;}
+  if(e.target.closest('[data-pick-zoom]')){closeUnitPicker();zoom(.65,context.point);return;}
+  const b=e.target.closest('[data-pick-unit]');
+  if(!b||!context.ids.includes(b.dataset.pickUnit))return;
+  const u=S.units.find(u=>u.id===b.dataset.pickUnit);
+  closeUnitPicker();
+  if(busy||selected!==context.selected||actionMode!==context.actionMode||!u||!visible(u))return;
+  activate({dataset:{unit:u.id}});
+ };
  $('mobileUnitBar').onclick=e=>{
   const b=e.target.closest('[data-mobile-command]');if(!b||b.disabled)return;
   const cmd=b.dataset.mobileCommand,u=S.units.find(u=>u.id===selected);
@@ -1302,6 +1416,7 @@ function setupMobileLayout(){
   if(cmd==='cancel'){cancelAction();renderMoves();return;}
   if(cmd==='undo'){performUndo();return;}
   if(!controllable(u))return;
+  if(cmd==='move'){beginMove(u);return;}
   if(cmd==='auto'){clearUndo();E.setAuto(S,u.id,!u.autoSupport);save();renderDetail();renderMobileControls();return;}
   if(cmd==='advance'){prepareAdvance(u);return;}
   if(cmd==='wait'){clearUndo();cancelAction();perform(E.waitUnit(S,u.id));return;}
@@ -1319,7 +1434,7 @@ function resizeMobileCamera(){
  view={...view,y:cy-h/2,h};applyView();
 }
 
-function onMapClick(e){if(suppressClick){suppressClick=false;return;}const el=e.target.closest('[data-unit],[data-city],[data-q]');if(el)activate(el);}
+function onMapClick(e){if(suppressClick){suppressClick=false;return;}if(mobileLayout&&e.detail!==0){mobileMapTap(e.target,e);return;}const el=e.target.closest('[data-unit],[data-city],[data-q]');if(el)activate(el);}
 function onKey(e){if(['Enter',' '].includes(e.key)){const el=e.target.closest('[data-unit],[data-city]');if(el){e.preventDefault();activate(el);}}if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();view.x+=(e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0)*view.w*.08;view.y+=(e.key==='ArrowDown'?1:e.key==='ArrowUp'?-1:0)*view.h*.08;applyView();}}
 
 buildMap();
@@ -1408,7 +1523,8 @@ window.BARB_MAP_INPUT.attach(map,{
  getView:()=>{applyView();return view;},
  setView:next=>{view=next;scheduleView();},
  clamp:clampInputView,
- onTap:target=>{const el=target.closest('[data-unit],[data-city],[data-q]');if(el)activate(el);},
+ onStart:closeUnitPicker,
+ onTap:(target,e)=>{if(mobileLayout){mobileMapTap(target,e);return;}const el=target.closest('[data-unit],[data-city],[data-q]');if(el)activate(el);},
  onEnd:consumed=>{suppressClick=consumed;if(consumed)setTimeout(()=>{suppressClick=false;},400);}
 });
 

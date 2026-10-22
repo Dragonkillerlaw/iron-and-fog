@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict');
-const {attach,clampCamera,pinchCamera}=require('./map-input');
+const {attach,clampCamera,pinchCamera,nearbyUnits,nearestCell}=require('./map-input');
 const bounds={x:0,y:0,w:5000,h:3600},clamp=v=>clampCamera(v,bounds);
 const start={view:{x:1000,y:1000,w:800,h:1000},scale:.5,origin:{x:0,y:100},anchor:{x:1400,y:1400},distance:100};
 const zoomed=pinchCamera(start,{x:200,y:300},200,clamp);
@@ -11,10 +11,32 @@ assert.equal(limit.w,320);assert.equal(limit.h/limit.w,1.25);
 assert.deepEqual(clamp({x:-300,y:5000,w:800,h:1000}),{x:0,y:2600,w:800,h:1000});
 console.log('PASS pinch keeps its anchor, zoom limit and camera bounds');
 
-let view={x:1000,y:1000,w:800,h:1000},taps=0,ends=[];
+const visiblePoints=[{id:'far',x:130,y:100},{id:'near',x:106,y:100},{id:'outside',x:131,y:100}];
+assert.deepEqual(nearbyUnits(visiblePoints,{x:100,y:100}).map(p=>p.id),['near','far']);
+assert.deepEqual(visiblePoints.map(p=>p.id),['far','near','outside']);
+assert.equal(nearbyUnits(visiblePoints,{x:0,y:0}).length,0);
+const bodyPoint={id:'infantry',x:100,y:160,top:100,bottom:170};
+assert.deepEqual(nearbyUnits([bodyPoint],{x:105,y:100}).map(p=>p.id),['infantry']);
+assert.equal(nearbyUnits([{id:bodyPoint.id,x:bodyPoint.x,y:bodyPoint.y}],{x:105,y:100}).length,0);
+assert.equal(nearbyUnits([bodyPoint],{x:131,y:100}).length,0);
+assert.equal(nearbyUnits([bodyPoint],{x:100,y:69}).length,0);
+const board={cols:81,rows:67},position=(q,r)=>({x:50+q*60+(r&1)*30,y:50+r*53});
+for(const cell of [{q:0,r:0},{q:10,r:10},{q:10,r:11},{q:80,r:66}]){
+ const p=position(cell.q,cell.r);
+ assert.deepEqual(nearestCell(p,board,position),cell);
+ assert.deepEqual(nearestCell({x:p.x+15,y:p.y+10},board,position),cell);
+}
+const even=position(10,10),odd=position(10,11);
+assert.deepEqual(nearestCell({x:even.x+14,y:even.y+25},board,position),{q:10,r:10});
+assert.deepEqual(nearestCell({x:odd.x-14,y:odd.y-25},board,position),{q:10,r:11});
+assert.equal(nearestCell({x:-100,y:50},board,position),null);
+assert.equal(nearestCell({x:50,y:-100},board,position),null);
+console.log('PASS nearby units respect the pixel radius; even/odd hex rows and map edges resolve correctly');
+
+let view={x:1000,y:1000,w:800,h:1000},taps=0,ends=[],lastTap=null;
 const captures=new Set(),unit={name:'unit'};
 const svg={classList:{add(){},remove(){}},getScreenCTM(){return {a:400/view.w,d:400/view.w,e:-view.x*400/view.w,f:100-view.y*400/view.w};},setPointerCapture:id=>captures.add(id),hasPointerCapture:id=>captures.has(id),releasePointerCapture:id=>captures.delete(id)};
-attach(svg,{getView:()=>view,setView:v=>view=v,clamp,onTap:target=>{assert.equal(target,unit);taps++;},onEnd:v=>ends.push(v)});
+attach(svg,{getView:()=>view,setView:v=>view=v,clamp,onTap:(target,point)=>{assert.equal(target,unit);lastTap=point;taps++;},onEnd:v=>ends.push(v)});
 const event=(id,x,y,type='touch')=>({pointerId:id,clientX:x,clientY:y,button:0,pointerType:type,target:unit});
 svg.onpointerdown(event(1,100,200));svg.onpointerup(event(1,100,200));
 assert.equal(taps,1);assert.equal(ends.at(-1),true);
@@ -27,3 +49,13 @@ svg.onpointerdown(event(3,100,200));svg.onpointercancel(event(3,100,200));assert
 svg.onpointerdown(event(4,100,200,'mouse'));svg.onpointerup(event(4,100,200,'mouse'));
 assert.equal(taps,1);assert.equal(ends.at(-1),false);
 console.log('PASS touch taps once; pinch, remaining-finger pan and cancellation never select; mouse uses normal click');
+
+const beforeJitter={...view};
+svg.onpointerdown(event(5,100,200));svg.onpointermove(event(5,106,203));svg.onpointerup(event(5,106,203));
+assert.equal(taps,2);assert.deepEqual(view,beforeJitter);
+assert.deepEqual(lastTap,{clientX:106,clientY:203,pointerType:'touch'});
+svg.onpointerdown(event(6,100,200));svg.onpointerup(event(6,120,200));
+assert.equal(taps,2);assert.equal(ends.at(-1),true);
+svg.onpointerdown(event(7,100,200));svg.onpointermove(event(7,111,200));svg.onpointermove(event(7,100,200));svg.onpointerup(event(7,100,200));
+assert.equal(taps,2);assert.equal(ends.at(-1),true);
+console.log('PASS small finger jitter stays a tap; lift-off drift and out-and-back drags never select');
