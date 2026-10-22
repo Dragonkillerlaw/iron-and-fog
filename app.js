@@ -197,27 +197,35 @@ function updateRegionsForMode(){
 
 // Keep unchanged SVG sprites alive instead of reparsing every unit on every AI update.
 const svgChildren=new WeakMap();
-function syncSvgChildren(container,items){
- let cache=svgChildren.get(container);
- if(!cache){cache=new Map();svgChildren.set(container,cache);}
- const present=new Set();
- for(const [id,markup] of items){
-  present.add(id);
-  const old=cache.get(id);
-  if(old?.markup===markup)continue;
-  const holder=document.createElementNS('http://www.w3.org/2000/svg','svg');
-  holder.innerHTML=markup;
-  const node=holder.firstElementChild;
-  if(old)old.node.replaceWith(node);else container.appendChild(node);
-  cache.set(id,{markup,node});
- }
- for(const [id,entry] of cache)if(!present.has(id)){entry.node.remove();cache.delete(id);}
+function syncSvgChildren(container, items) {
+  let cache = svgChildren.get(container);
+  if (!cache) { cache = new Map(); svgChildren.set(container, cache); }
+  const present = new Set();
+  for (const [id, markup] of items) {
+    present.add(id);
+    const old = cache.get(id);
+    if (old?.markup === markup) continue;
+    const holder = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    holder.innerHTML = markup;
+    const node = holder.firstElementChild;
+    if (old) old.node.replaceWith(node); else container.appendChild(node);
+    cache.set(id, { markup, node });
+  }
+  for (const [id, entry] of cache) if (!present.has(id)) { entry.node.remove(); cache.delete(id); }
+  let cursor = null;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const node = cache.get(items[i][0]).node;
+    if (node.nextSibling !== cursor) container.insertBefore(node, cursor);
+    cursor = node;
+  }
 }
 function renderUnits(){
  if(!$('units'))return;
  const artOn=$('artToggle').checked;
  const unitItems=[],miniItems=[];
- for(const u of S.units.filter(visible)){
+ // Ground positions determine depth; selection and sprite height never lift a unit.
+ const orderedUnits = S.units.filter(visible).map(u => ({ u, pos: D.position(u.q, u.r) })).sort((a, b) => a.pos.y - b.pos.y || a.pos.x - b.pos.x || (a.u.id < b.u.id ? -1 : a.u.id > b.u.id ? 1 : 0)).map(item => item.u);
+ for(const u of orderedUnits){
   const p=D.position(u.q,u.r),c=color(u.side),chosen=u.id===selected,symbol=E.profiles[u.role].symbol;
   const vet=E.veteran(u);
   const badgeText=vet.level>0?('★'.repeat(vet.level)):null;
